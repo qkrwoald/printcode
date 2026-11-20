@@ -4,12 +4,16 @@ from contextlib import contextmanager
 
 from . import config
 
+# 구조가 바뀌면 올린다. 저장된 데이터는 길어야 30분짜리 임시 파일이므로, 버전이 다르면 지우고 새로 만든다.
+SCHEMA_VERSION = 2
+
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS files (
+CREATE TABLE files (
     code              TEXT PRIMARY KEY,
-    status            TEXT NOT NULL CHECK (status IN ('reserved', 'ready')),
-    upload_token_hash BLOB,              -- 예약자만 업로드하도록. 업로드 후 NULL
-    blob_name         TEXT,              -- 서버가 만든 무작위 파일명
+    -- reserved: 코드 예약됨 / ready: 업로드 완료 / claimed: 출력 PC가 받아 감(출력 중)
+    status            TEXT NOT NULL CHECK (status IN ('reserved', 'ready', 'claimed')),
+    owner_token_hash  BLOB NOT NULL,     -- 업로더 토큰 해시: 예약자만 업로드하고, 상태 알림을 받게 함
+    blob_name         TEXT,              -- 서버가 만든 무작위 파일명 (받아 가면 즉시 삭제 → NULL)
     salt              BLOB,
     auth_hash         BLOB,              -- SHA-256(auth_token). auth_token 자체는 저장하지 않음
     kdf_m             INTEGER,
@@ -17,6 +21,9 @@ CREATE TABLE IF NOT EXISTS files (
     kdf_p             INTEGER,
     has_phrase        INTEGER,
     failed_attempts   INTEGER NOT NULL DEFAULT 0,
+    claim_token_hash  BLOB,              -- 출력 창 WebSocket 인증용 (받아 갈 때 발급)
+    claimed_at        REAL,
+    print_connected   INTEGER NOT NULL DEFAULT 0,
     created_at        REAL NOT NULL,
     expires_at        REAL NOT NULL
 );
@@ -27,7 +34,14 @@ def init() -> None:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     config.BLOB_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
-        conn.executescript(SCHEMA)
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if version != SCHEMA_VERSION:
+            conn.execute("DROP TABLE IF EXISTS files")
+            for f in config.BLOB_DIR.iterdir():
+                f.unlink(missing_ok=True)
+            conn.executescript(SCHEMA)
+            # PRAGMA는 파라미터 바인딩을 받지 않는다. 값은 코드 안의 정수 상수라 안전하다.
+            conn.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
 
 
 @contextmanager

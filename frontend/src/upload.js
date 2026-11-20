@@ -1,5 +1,5 @@
 // 업로드 화면 (내 노트북). 사용자 입력은 textContent로만 화면에 넣는다 (XSS 방지).
-import { getConfig, reserveCode, uploadBlob } from './api.js';
+import { getConfig, reserveCode, uploadBlob, wsUrl } from './api.js';
 import { b64uEncode, normalizePhrase, sealFile } from './crypto.js';
 
 // 최대 크기는 서버 설정을 따른다 (null = 제한 없음). 서버도 같은 값으로 다시 검사한다.
@@ -86,6 +86,7 @@ form.addEventListener('submit', async (e) => {
     );
 
     showResult(reserved.code, uploaded.expires_in);
+    watchStatus(reserved.code, reserved.upload_token);
   } catch (err) {
     setStatus(err.message || 'Upload failed.', true);
     setFormDisabled(false);
@@ -105,6 +106,7 @@ function showResult(code, expiresIn) {
 
 // 만료까지 남은 시간을 1초마다 표시한다. 탭이 백그라운드에서 느려져도 어긋나지 않도록
 // 매번 마감 시각과의 차이로 다시 계산한다.
+let countdownId = null;
 function startCountdown(deadline) {
   const timer = $('timer');
   const tick = () => {
@@ -113,12 +115,56 @@ function startCountdown(deadline) {
     const ss = String(left % 60).padStart(2, '0');
     timer.textContent = `${mm}:${ss}`;
     if (left === 0) {
-      clearInterval(id);
+      clearInterval(countdownId);
       timer.classList.add('expired'); // 만료: 빨간 취소선
     }
   };
-  const id = setInterval(tick, 1000);
+  countdownId = setInterval(tick, 1000);
   tick();
+}
+
+// 서버가 알려주는 상태를 코드 자리에 크게 표시한다.
+// 받아 간 뒤에는 코드를 다시 쓸 수 없으므로 코드와 타이머는 감춘다.
+const STATUS_LABELS = {
+  printing: 'PRINTING',
+  printed: 'PRINTED',
+  closed: 'NOT PRINTED', // 출력 창이 인쇄 없이 닫힘 → 파일은 삭제됨
+  deleted: 'DELETED', // 확인코드 여러 번 틀림
+  expired: 'EXPIRED',
+};
+const ALERT_EVENTS = new Set(['closed', 'deleted', 'expired']);
+
+function showStatus(event) {
+  const label = STATUS_LABELS[event];
+  if (!label) return; // 'waiting' 등은 코드·타이머를 그대로 둔다
+  clearInterval(countdownId);
+  const code = $('code');
+  $('result-head').textContent = 'STATUS';
+  code.textContent = label;
+  code.classList.add('state');
+  code.classList.toggle('alert', ALERT_EVENTS.has(event));
+  $('timer-row').hidden = true;
+}
+
+// 업로더 WebSocket: 토큰은 URL이 아닌 첫 메시지로 보낸다 (접속 기록에 남지 않게).
+function watchStatus(code, ownerToken) {
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl('/ws/upload'));
+  } catch {
+    return; // 상태 알림 없이도 업로드 자체는 끝났다
+  }
+  ws.addEventListener('open', () => ws.send(JSON.stringify({ code, owner_token: ownerToken })));
+  ws.addEventListener('message', (e) => {
+    let msg;
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    showStatus(msg.event);
+    if (msg.event !== 'waiting' && msg.event !== 'printing') ws.close(); // 끝난 상태
+  });
 }
 
 $('again').addEventListener('click', () => location.reload());

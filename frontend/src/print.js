@@ -1,8 +1,11 @@
-// 출력 화면 (공용 PC). 복호화한 PDF는 메모리에만 두고, 인쇄가 끝나면 바로 지운다.
-// M1은 같은 창에서 인쇄한다. 출력 전용 팝업·WebSocket·무동작 타이머는 M2에서 추가한다.
+// 출력 화면 (공용 PC). 코드 확인·인증까지만 하고, 복호화와 인쇄는 출력 전용 팝업 창이 한다.
+// 팝업이 막히면 이 창에서 같은 방식으로 인쇄한다 (예비 경로).
 import { ApiError, fetchBlob, lookup } from './api.js';
-import { b64uDecode, b64uEncode, decryptPackage, deriveKeys } from './crypto.js';
-import { renderPdf } from './pdfview.js';
+import { b64uDecode, b64uEncode, deriveKeys } from './crypto.js';
+import { IDLE_MS, runPrintJob } from './printjob.js';
+
+const WINDOW_URL = '/print/window/';
+const WINDOW_FEATURES = 'popup,width=920,height=720';
 
 const $ = (id) => document.getElementById(id);
 const form = $('code-form');
@@ -14,6 +17,7 @@ const statusEl = $('status');
 const printArea = $('print-area');
 
 let info = null; // lookup 결과 (salt, kdf, has_phrase)
+let busy = false;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
@@ -22,10 +26,11 @@ function setStatus(text, isError = false) {
 
 const getCode = () => digits.map((d) => d.value).join('');
 
-function setBusy(busy) {
-  digits.forEach((d) => (d.disabled = busy));
-  phraseInput.disabled = busy;
-  submitBtn.disabled = busy;
+function setBusy(on) {
+  busy = on;
+  digits.forEach((d) => (d.disabled = on));
+  phraseInput.disabled = on;
+  submitBtn.disabled = on;
 }
 
 function resetForm() {
@@ -91,25 +96,37 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  setBusy(true);
-  try {
-    if (!info) {
+  // 1단계(NEXT): 코드 확인. 2단계(PRINT): 인증 후 출력.
+  // PRINT를 따로 누르게 하는 이유: 팝업은 클릭 직후(기다림 없이) 열어야 브라우저가 막지 않는다.
+  if (!info) {
+    setBusy(true);
+    try {
       setStatus('Checking code…');
       info = await lookup(code);
-      if (info.has_phrase && !phraseInput.value) {
+      submitBtn.textContent = 'PRINT';
+      setBusy(false);
+      if (info.has_phrase) {
         // 확인코드를 빠뜨려 시도 횟수를 낭비하지 않도록 입력칸을 먼저 보여준다.
         phraseRow.hidden = false;
-        submitBtn.textContent = 'PRINT';
         setStatus('Phrase required.');
-        setBusy(false);
         phraseInput.focus();
-        return;
+      } else {
+        setStatus('Ready. Press PRINT.');
+        submitBtn.focus();
       }
+    } catch (err) {
+      handleError(err);
+      setBusy(false);
     }
-    await decryptAndPrint(code, info.has_phrase ? phraseInput.value : '');
+    return;
+  }
+
+  setBusy(true);
+  try {
+    await startPrint(code, info.has_phrase ? phraseInput.value : '');
   } catch (err) {
     handleError(err);
-    setBusy(false);
+    if (busy) setBusy(false);
   }
 });
 
@@ -131,48 +148,85 @@ function handleError(err) {
   }
 }
 
-async function decryptAndPrint(code, phrase) {
-  setStatus('Verifying… (may take a few seconds)');
-  const { encKey, authToken } = await deriveKeys(code, phrase, b64uDecode(info.salt), info.kdf);
-  const tokenB64u = b64uEncode(authToken);
-  authToken.fill(0);
+// 팝업이 준비됐다고 알려 올 때까지 기다린다. 닫히거나 15초가 지나면 false.
+function waitForPopup(popup, type, timeoutMs) {
+  return new Promise((resolve) => {
+    const done = (value) => {
+      clearTimeout(timer);
+      clearInterval(poll);
+      window.removeEventListener('message', onMessage);
+      resolve(value);
+    };
+    const onMessage = (e) => {
+      // 우리가 연 팝업(같은 사이트)이 보낸 메시지만 받는다
+      if (e.origin === location.origin && e.source === popup && e.data?.type === type) done(e.data);
+    };
+    window.addEventListener('message', onMessage);
+    const poll = setInterval(() => popup.closed && done(null), 500);
+    const timer = timeoutMs ? setTimeout(() => done(null), timeoutMs) : null;
+  });
+}
 
-  const blob = await fetchBlob(code, tokenB64u);
-  // 서버가 암호문을 내려줬다면 이미 서버에서 삭제됐다 (1회성).
-  phraseInput.value = '';
+const RESULT_MESSAGES = {
+  printed: 'Done. Document cleared from screen and memory.',
+  idle: 'Timed out. Document cleared from screen and memory.',
+  closed: 'Print window closed. Document cleared.',
+};
 
-  setStatus('Opening document…');
-  let pdfBytes;
-  let view;
+async function startPrint(code, phrase) {
+  // 반드시 await 전에 연다: 클릭 직후가 아니면 팝업 차단에 걸린다.
+  const popup = window.open(WINDOW_URL, 'printcode-print', WINDOW_FEATURES);
+  const popupReady = popup ? waitForPopup(popup, 'printcode:ready', 15_000) : Promise.resolve(null);
+
+  let job;
   try {
-    ({ pdfBytes } = await decryptPackage(blob, encKey));
-    view = await renderPdf(pdfBytes, printArea);
-  } catch {
-    throw new Error('Cannot open file. Damaged or unsupported PDF.');
-  } finally {
-    blob.fill(0);
-    pdfBytes?.fill(0);
+    setStatus('Verifying… (may take a few seconds)');
+    const { encKey, authToken } = await deriveKeys(code, phrase, b64uDecode(info.salt), info.kdf);
+    const tokenB64u = b64uEncode(authToken);
+    authToken.fill(0);
+    const { blob, claimToken } = await fetchBlob(code, tokenB64u);
+    // 여기서부터 서버의 암호문은 이미 지워졌고, 이 코드는 다시 쓸 수 없다 (1회성)
+    phraseInput.value = '';
+    job = { blob, encKey, claimToken };
+  } catch (err) {
+    popup?.close();
+    throw err;
   }
 
-  let cleaned = false;
-  const cleanup = async () => {
-    if (cleaned) return;
-    cleaned = true;
-    try {
-      await view.cleanup();
-    } finally {
-      resetForm();
-      setBusy(false);
-      setStatus('Done. Document cleared from screen and memory.');
+  let result;
+  try {
+    if (popup && !popup.closed && (await popupReady)) {
+      // 암호문 버퍼는 복사하지 않고 팝업으로 넘긴다(transfer). 키는 꺼낼 수 없는 CryptoKey 그대로 전달.
+      popup.postMessage({ type: 'printcode:job', ...job }, location.origin, [job.blob.buffer]);
+      setStatus('Printing in the print window…');
+      const done = await waitForPopup(popup, 'printcode:done', 0);
+      if (done?.result === 'error') throw new Error(done.message || 'Could not open file.');
+      result = done?.result ?? 'closed';
+    } else {
+      // 팝업이 막힘 → 이 창에서 인쇄 (예비 경로)
+      popup?.close();
+      result = await runPrintJob({ ...job, container: printArea, onStatus: setStatus });
     }
-  };
-  window.addEventListener('afterprint', cleanup, { once: true });
-
-  setStatus(`Opening print dialog… (${view.numPages} ${view.numPages === 1 ? 'page' : 'pages'})`);
-  window.print();
-  // afterprint가 오지 않는 브라우저 대비 안전장치. print()가 바로 돌아오는 브라우저도 있어
-  // 너무 짧으면 인쇄 전에 지워지므로 넉넉히 둔다. (M2에서 2분 무동작 정리로 대체)
-  setTimeout(cleanup, 60_000);
+  } finally {
+    resetForm(); // 이미 받아 간 코드는 다시 쓸 수 없으므로 성공·실패와 관계없이 첫 화면으로
+  }
+  setStatus(RESULT_MESSAGES[result] ?? RESULT_MESSAGES.closed);
 }
+
+// 2분 동안 아무 동작이 없으면 입력한 코드·확인코드를 지우고 첫 화면으로 돌아간다.
+let idleTimer;
+function bumpIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (!busy && (getCode() || phraseInput.value)) {
+      resetForm();
+      setStatus('');
+    }
+  }, IDLE_MS);
+}
+['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach((t) =>
+  window.addEventListener(t, bumpIdle, { passive: true }),
+);
+bumpIdle();
 
 resetForm();

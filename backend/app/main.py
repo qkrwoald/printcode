@@ -1,22 +1,30 @@
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db
+from . import config, db, lifecycle, ws
 from .api import router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
+    lifecycle.hub.bind(asyncio.get_running_loop())
+    sweeper = asyncio.create_task(lifecycle.sweeper())
     yield
+    sweeper.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await sweeper
 
 
 # API 문서 페이지는 외부 CDN 스크립트를 쓰고 공격 표면만 늘리므로 끈다.
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.include_router(router)
+app.include_router(ws.router)
 
 # 엄격한 CSP: 우리 서버의 스크립트만 실행. 인라인 스크립트·외부 CDN 금지 (XSS 방지)
 # 'wasm-unsafe-eval'은 hash-wasm(Argon2id)의 WebAssembly 실행에만 필요하다 (JS eval은 여전히 금지).

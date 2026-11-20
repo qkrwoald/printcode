@@ -1,6 +1,6 @@
 """API 입력 스키마. 모든 입력은 여기서 형식·길이를 검증한 뒤에만 사용한다."""
 import base64
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -39,3 +39,20 @@ class FetchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: Code
     auth_token: B64u32
+
+
+# ── WebSocket 첫 메시지 (토큰은 URL이 아닌 메시지로 받아 접속 기록에 남지 않게 한다) ──
+class UploaderHello(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: Code
+    owner_token: B64u32
+
+
+class PrintHello(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    claim_token: B64u32
+
+
+class PrintMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["printed"]

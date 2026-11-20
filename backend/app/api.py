@@ -13,7 +13,8 @@ from typing import Annotated
 from fastapi import APIRouter, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from . import config, db, storage
+from . import config, db, lifecycle, storage
+from .lifecycle import hub
 from .schemas import FetchIn, LookupIn, UploadForm, b64u_decode, b64u_encode
 
 router = APIRouter(prefix="/api")
@@ -25,15 +26,6 @@ MIN_BLOB_BYTES = 1 + 12 + 16
 
 def _sha256(b: bytes) -> bytes:
     return hashlib.sha256(b).digest()
-
-
-def purge_expired(now: float) -> None:
-    """만료된 예약·파일을 삭제한다. (M4에서 주기 작업으로도 실행 예정)"""
-    with db.transaction() as conn:
-        rows = conn.execute("SELECT blob_name FROM files WHERE expires_at < ?", (now,)).fetchall()
-        conn.execute("DELETE FROM files WHERE expires_at < ?", (now,))
-    for row in rows:
-        storage.delete(row["blob_name"])
 
 
 def _get_ready(conn: sqlite3.Connection, code: str, now: float):
@@ -53,8 +45,8 @@ def get_config():
 def reserve_code():
     """활성 코드와 겹치지 않는 6자리 코드를 예약한다."""
     now = time.time()
-    purge_expired(now)  # 만료된 코드를 먼저 지워 재사용 가능하게 함
-    # 예약한 브라우저만 업로드할 수 있도록 일회용 토큰을 주고, 서버에는 해시만 저장한다.
+    lifecycle.purge(now)  # 만료된 코드를 먼저 지워 재사용 가능하게 함
+    # 예약한 브라우저만 업로드하고 상태 알림을 받을 수 있도록 토큰을 주고, 서버에는 해시만 저장한다.
     upload_token = secrets.token_bytes(32)
     for _ in range(20):
         # secrets: 예측 불가능한 난수 (random 모듈은 예측 가능해서 쓰지 않음)
@@ -62,7 +54,7 @@ def reserve_code():
         try:
             with db.connect() as conn:
                 conn.execute(
-                    "INSERT INTO files (code, status, upload_token_hash, created_at, expires_at) "
+                    "INSERT INTO files (code, status, owner_token_hash, created_at, expires_at) "
                     "VALUES (?, 'reserved', ?, ?, ?)",
                     (code, _sha256(upload_token), now, now + config.RESERVE_TTL_SECONDS),
                 )
@@ -82,14 +74,15 @@ def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
     token_hash = _sha256(b64u_decode(form.upload_token))
     with db.transaction() as conn:
         row = conn.execute(
-            "SELECT upload_token_hash, expires_at FROM files WHERE code = ? AND status = 'reserved'",
+            "SELECT owner_token_hash, expires_at FROM files WHERE code = ? AND status = 'reserved'",
             (form.code,),
         ).fetchone()
         # compare_digest: 비교 시간이 일치 길이에 따라 달라지지 않게 해 타이밍 공격을 막는다.
+        # status='reserved' 조건 때문에 같은 토큰으로 두 번 업로드할 수는 없다.
         if (
             row is None
             or row["expires_at"] < now
-            or not hmac.compare_digest(row["upload_token_hash"], token_hash)
+            or not hmac.compare_digest(row["owner_token_hash"], token_hash)
         ):
             raise HTTPException(403, "Upload not allowed or reservation expired.")
 
@@ -103,7 +96,7 @@ def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
 
         try:
             conn.execute(
-                "UPDATE files SET status = 'ready', upload_token_hash = NULL, blob_name = ?, "
+                "UPDATE files SET status = 'ready', blob_name = ?, "
                 "salt = ?, auth_hash = ?, kdf_m = ?, kdf_t = ?, kdf_p = ?, has_phrase = ?, "
                 "expires_at = ? WHERE code = ?",
                 (
@@ -146,15 +139,24 @@ def fetch(body: FetchIn):
     presented = _sha256(b64u_decode(body.auth_token))
     data = None
     remaining = None
+    claim_token = None
+    now = time.time()
     with db.transaction() as conn:
-        row = _get_ready(conn, body.code, time.time())
+        row = _get_ready(conn, body.code, now)
         if row is None:
             raise HTTPException(404, NOT_FOUND)
         blob_name = row["blob_name"]
         if hmac.compare_digest(row["auth_hash"], presented):
             data = storage.read(blob_name)
-            # M1: 내려준 즉시 삭제해 1회만 출력되게 한다. (M2에서 WebSocket 기반으로 변경)
-            conn.execute("DELETE FROM files WHERE code = ?", (body.code,))
+            # 받아 간 파일은 'claimed'로 바꿔 다른 사람이 다시 받을 수 없게 한다.
+            # 암호문은 출력 창이 이미 갖고 있으므로 서버 사본은 바로 지운다 (서버 보관 시간 최소화).
+            # 기록은 출력 창 WebSocket이 끝날 때까지 남겨 업로더에게 결과를 알리는 데 쓴다.
+            claim_token = secrets.token_bytes(32)
+            conn.execute(
+                "UPDATE files SET status = 'claimed', blob_name = NULL, claim_token_hash = ?, "
+                "claimed_at = ?, print_connected = 0 WHERE code = ?",
+                (_sha256(claim_token), now, body.code),
+            )
         else:
             failed = row["failed_attempts"] + 1
             remaining = config.MAX_FAILED_ATTEMPTS - failed
@@ -168,9 +170,16 @@ def fetch(body: FetchIn):
     # 파일 삭제는 DB 커밋 뒤에 한다 (커밋이 실패하면 파일이 남아 있어야 함)
     if data is not None:
         storage.delete(blob_name)
-        return Response(content=data, media_type="application/octet-stream")
+        hub.notify(body.code, "printing")
+        # 출력 창이 WebSocket 인증에 쓸 토큰. 본문은 암호문이라 헤더로 함께 보낸다.
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            headers={"X-Claim-Token": b64u_encode(claim_token)},
+        )
     if remaining <= 0:
         storage.delete(blob_name)
+        hub.notify(body.code, "deleted")
         return JSONResponse(
             {"detail": "Too many wrong attempts. File deleted.", "remaining": 0},
             status_code=403,

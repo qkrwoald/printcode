@@ -53,7 +53,16 @@ export async function lookup(code) {
   return (await postJson('/api/lookup', { code })).json();
 }
 
+/** 인증이 맞으면 암호문과, 출력 창 WebSocket에 쓸 claim 토큰을 받는다. */
 export async function fetchBlob(code, authTokenB64u) {
   const res = await postJson('/api/fetch', { code, auth_token: authTokenB64u });
-  return new Uint8Array(await res.arrayBuffer());
+  return {
+    blob: new Uint8Array(await res.arrayBuffer()),
+    claimToken: res.headers.get('X-Claim-Token'),
+  };
+}
+
+/** 같은 사이트의 WebSocket 주소 (https면 wss). */
+export function wsUrl(path) {
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${path}`;
 }

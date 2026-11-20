@@ -4,10 +4,10 @@
 
 - 내 노트북 브라우저에서 PDF를 **암호화한 뒤** 업로드합니다. 서버에는 암호문만 남습니다.
 - 공용 PC에서 코드(+확인코드)를 입력하면 브라우저 메모리에서 복호화해 인쇄 창을 엽니다.
-- 한 번 출력하면 서버의 암호문은 즉시 삭제됩니다.
+- 출력 PC가 파일을 받아 가는 순간 서버의 암호문은 삭제되고, 같은 코드로는 다시 출력할 수 없습니다.
 
-> 현재 단계: **M1** (최소 흐름). 출력 전용 팝업·WebSocket·자동 정리(M2), 출력 설정(M3),
-> 보안 강화(M4), docx/pptx(M5), hwp(M6)는 아직입니다.
+> 현재 단계: **M2** (출력 전용 창·WebSocket·자동 정리). 출력 설정(M3), 보안 강화(M4),
+> docx/pptx(M5), hwp(M6)는 아직입니다. 보안 설계와 한계는 [SECURITY.md](SECURITY.md)를 보세요.
 
 ## 사용 흐름
 
@@ -15,8 +15,14 @@
 
 1. 노트북에서 UPLOAD(`/upload/`) → PDF 선택 → (선택) 확인코드 입력 → **UPLOAD**
 2. 화면에 나온 6자리 코드를 기억 (남은 시간이 1초씩 표시됨)
-3. 프린터실 PC에서 PRINT(`/print/`) → 코드 6칸 입력 → (확인코드) → 인쇄 창에서 출력
-4. 인쇄가 끝나면 화면과 메모리에서 문서가 지워집니다. 같은 코드로는 다시 출력할 수 없습니다.
+3. 프린터실 PC에서 PRINT(`/print/`) → 코드 6칸 입력 → **NEXT** → (확인코드) → **PRINT**
+4. 출력 전용 창이 열려 인쇄 창을 띄웁니다. 인쇄 창이 닫히면 **DONE** / **PRINT AGAIN**을 고릅니다.
+   - **DONE**: 문서를 지우고 창이 스스로 닫힙니다.
+   - **PRINT AGAIN**: 코드를 다시 입력하지 않고 바로 다시 인쇄합니다 (취소했거나 용지가 걸렸을 때).
+   - 팝업이 막혀 있으면 같은 창에서 인쇄합니다.
+   - 2분 동안 아무 동작이 없으면 문서와 입력값을 지웁니다.
+5. 업로드 화면의 코드 자리에 상태가 실시간으로 표시됩니다: `PRINTING` → `PRINTED`
+   (DONE 없이 창이 닫히거나 시간이 지나면 `NOT PRINTED`, 5회 실패 시 `DELETED`, 만료 시 `EXPIRED`)
 
 | 모드 | 외부인의 코드 추측 | 서버 관리자의 열람 |
 |---|---|---|
@@ -109,8 +115,10 @@ cd frontend; npm test
 ## 구조
 
 ```
-backend/app/   FastAPI: api.py(엔드포인트) db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증)
-frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) upload.js print.js pdfview.js(pdf.js) api.js
+backend/app/   api.py(HTTP 엔드포인트) ws.py(WebSocket) lifecycle.py(상태 알림·정리 작업)
+               db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증) config.py
+frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) upload.js print.js(출력 화면)
+               printwindow.js(출력 전용 창) printjob.js(복호화·인쇄·정리) pdfview.js(pdf.js) api.js
 ```
 
 암호화 설계: `master = Argon2id(code|phrase, salt)` → HKDF로 `enc_key`(AES-GCM-256)와

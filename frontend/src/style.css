@@ -5,7 +5,7 @@
   --paper: #f4f4f0;
   --ink: #111111;
   --muted: #55554f; /* 종이 위 대비 약 7:1 */
-  --red: #e61919; /* 유일한 강조색: 오류·굵은 구분선·포커스 */
+  --red: #e61919; /* 유일한 강조색: 오류 표시에만 사용 */
   --rule: 2px solid var(--ink);
 
   --font-macro: 'Arial Black', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
@@ -35,7 +35,7 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid var(--red);
+  outline: 3px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -155,7 +155,7 @@ input:not([type]) {
 }
 
 #file:focus-visible + .pick {
-  outline: 3px solid var(--red);
+  outline: 3px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -220,6 +220,17 @@ button:disabled {
   background: var(--paper);
   color: var(--ink);
   border-top: var(--rule);
+}
+
+/* 인쇄 창이 닫힌 뒤: [ DONE ] [ PRINT AGAIN ] 나란히 */
+.confirm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.confirm .secondary {
+  border-top: 0;
+  border-left: var(--rule);
 }
 
 /* ── 상태 줄 (<output>) ── */
@@ -297,6 +308,23 @@ button:disabled {
 #timer.expired {
   color: var(--muted);
   text-decoration: line-through 4px var(--red);
+}
+
+/* 코드 자리에 표시하는 상태 (PRINTING·PRINTED·NOT PRINTED…): 긴 단어도 한 줄에 들어가게 조금 작게 */
+.code.state {
+  font-size: clamp(2.5rem, 9vw, 5.5rem);
+  letter-spacing: 0;
+  padding-bottom: 12px;
+}
+
+/* 인쇄되지 않고 끝난 상태(NOT PRINTED·DELETED·EXPIRED): 큰 글자라 빨간색도 대비 기준을 넘는다 */
+.code.alert {
+  color: var(--red);
+}
+
+.timer-row {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* 상단 줄 왼쪽의 메인으로 가는 링크 */

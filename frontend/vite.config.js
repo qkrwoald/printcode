@@ -13,6 +13,7 @@ export default defineConfig({
         home: `${root}index.html`,
         upload: `${root}upload/index.html`,
         print: `${root}print/index.html`,
+        printWindow: `${root}print/window/index.html`,
       },
     },
   },

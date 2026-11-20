@@ -21,3 +21,13 @@ MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024 if MAX_PDF_MB > 0 else None
 MAX_BLOB_BYTES = MAX_PDF_BYTES + 64 * 1024 if MAX_PDF_BYTES else None
 # 코드별 인증 실패 허용 횟수. 이 횟수에 도달하면 파일을 즉시 삭제한다.
 MAX_FAILED_ATTEMPTS = 5
+
+# ── 출력 창(WebSocket) 관련 ──
+# 파일을 받아 간 뒤 출력 창이 이 시간 안에 연결하지 않으면 '닫힘'으로 정리한다.
+CLAIM_CONNECT_TIMEOUT = int(os.environ.get("PRINTCODE_CLAIM_CONNECT_TIMEOUT", 60))
+# 출력 창이 연결된 채로 오래 머무를 수 있는 최대 시간 (창이 멈춘 경우 대비)
+CLAIM_MAX_SECONDS = int(os.environ.get("PRINTCODE_CLAIM_MAX", 15 * 60))
+# 만료·멈춘 출력 정리 작업 주기
+SWEEP_INTERVAL = int(os.environ.get("PRINTCODE_SWEEP_INTERVAL", 30))
+# WebSocket 연결 후 첫 메시지(토큰)를 기다리는 시간
+WS_HELLO_TIMEOUT = 10
