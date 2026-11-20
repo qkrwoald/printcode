@@ -8,16 +8,14 @@
   </head>
   <body>
     <main id="entry" class="sheet">
-      <div class="hazard" aria-hidden="true"></div>
       <header class="strip">
-        <span></span>
+        <span><a href="/">HOME</a></span>
         <span>PRINT</span>
         <span>v0.1</span>
       </header>
 
       <div class="masthead">
         <h1>PrintCode</h1>
-        <p>코드를 입력하세요.</p>
       </div>
 
       <form id="code-form" novalidate>
@@ -36,13 +34,13 @@
           </div>
         </div>
         <div id="phrase-row" class="field" hidden>
-          <label class="key" for="phrase">02 / 확인코드</label>
+          <label class="key" for="phrase">02 / Phrase</label>
           <div class="val">
             <!-- type=password는 한글 입력기를 꺼버리므로 일반 텍스트. autocomplete=off로 공용 PC 입력 기록에 남기지 않는다 -->
-            <input id="phrase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
+            <input id="phrase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="확인코드" />
           </div>
         </div>
-        <button type="submit" id="submit">다음</button>
+        <button type="submit" id="submit">NEXT</button>
       </form>
 
       <output id="status" class="status" role="status"></output>

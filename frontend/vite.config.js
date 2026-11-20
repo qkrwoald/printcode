@@ -10,7 +10,8 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       input: {
-        upload: `${root}index.html`,
+        home: `${root}index.html`,
+        upload: `${root}upload/index.html`,
         print: `${root}print/index.html`,
       },
     },

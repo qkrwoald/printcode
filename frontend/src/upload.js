@@ -35,14 +35,14 @@ getConfig()
   });
 
 async function readPdf(file) {
-  if (!file) throw new Error('PDF 파일을 선택하세요.');
+  if (!file) throw new Error('Select a PDF file.');
   if (maxPdfBytes && file.size > maxPdfBytes) {
-    throw new Error(`파일은 ${toMB(maxPdfBytes)}MB 이하만 올릴 수 있습니다.`);
+    throw new Error(`File too large (max ${toMB(maxPdfBytes)} MB).`);
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   // 확장자만 믿지 않고 PDF 시그니처를 확인한다.
   const sig = new TextDecoder().decode(bytes.subarray(0, 5));
-  if (sig !== '%PDF-') throw new Error('PDF 파일이 아닙니다.');
+  if (sig !== '%PDF-') throw new Error('Not a PDF file.');
   return bytes;
 }
 
@@ -57,10 +57,10 @@ form.addEventListener('submit', async (e) => {
   try {
     pdfBytes = await readPdf(file);
 
-    setStatus('코드를 발급받는 중…');
+    setStatus('Issuing code…');
     const reserved = await reserveCode();
 
-    setStatus('브라우저에서 암호화하는 중…');
+    setStatus('Encrypting…');
     const t0 = performance.now();
     const { salt, authHash, blob, kdf } = await sealFile({
       code: reserved.code,
@@ -68,9 +68,9 @@ form.addEventListener('submit', async (e) => {
       pdfBytes,
       meta: { name: file.name, size: file.size, type: 'application/pdf', createdAt: Date.now() },
     });
-    console.info(`Argon2id+암호화: ${Math.round(performance.now() - t0)}ms`);
+    console.info(`Argon2id+encrypt: ${Math.round(performance.now() - t0)}ms`);
 
-    setStatus('암호문을 올리는 중…');
+    setStatus('Uploading…');
     const uploaded = await uploadBlob(
       {
         code: reserved.code,
@@ -85,27 +85,40 @@ form.addEventListener('submit', async (e) => {
       blob,
     );
 
-    showResult(reserved.code, uploaded.expires_in, phrase.length > 0);
+    showResult(reserved.code, uploaded.expires_in);
   } catch (err) {
-    setStatus(err.message || '업로드하지 못했습니다.', true);
+    setStatus(err.message || 'Upload failed.', true);
     setFormDisabled(false);
   } finally {
     pdfBytes?.fill(0);
   }
 });
 
-function showResult(code, expiresIn, hasPhrase) {
+function showResult(code, expiresIn) {
   phraseInput.value = '';
   form.hidden = true;
   setStatus('');
-  const expiresAt = new Date(Date.now() + expiresIn * 1000).toLocaleTimeString('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
   $('code').textContent = code;
-  $('result-note').textContent =
-    `${expiresAt}까지 한 번만 출력할 수 있습니다.` + (hasPhrase ? ' 출력할 때 확인코드도 입력하세요.' : '');
   $('result').hidden = false;
+  startCountdown(Date.now() + expiresIn * 1000);
+}
+
+// 만료까지 남은 시간을 1초마다 표시한다. 탭이 백그라운드에서 느려져도 어긋나지 않도록
+// 매번 마감 시각과의 차이로 다시 계산한다.
+function startCountdown(deadline) {
+  const timer = $('timer');
+  const tick = () => {
+    const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const mm = String(Math.floor(left / 60)).padStart(2, '0');
+    const ss = String(left % 60).padStart(2, '0');
+    timer.textContent = `${mm}:${ss}`;
+    if (left === 0) {
+      clearInterval(id);
+      timer.classList.add('expired'); // 만료: 빨간 취소선
+    }
+  };
+  const id = setInterval(tick, 1000);
+  tick();
 }
 
 $('again').addEventListener('click', () => location.reload());

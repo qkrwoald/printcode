@@ -18,7 +18,7 @@ from .schemas import FetchIn, LookupIn, UploadForm, b64u_decode, b64u_encode
 
 router = APIRouter(prefix="/api")
 
-NOT_FOUND = "코드가 없거나 만료되었습니다."
+NOT_FOUND = "Code not found or expired."
 # 암호문 최소 크기: 버전(1) + IV(12) + GCM 태그(16)
 MIN_BLOB_BYTES = 1 + 12 + 16
 
@@ -73,7 +73,7 @@ def reserve_code():
             "upload_token": b64u_encode(upload_token),
             "expires_in": config.RESERVE_TTL_SECONDS,
         }
-    raise HTTPException(503, "지금은 코드를 발급할 수 없습니다. 잠시 후 다시 시도하세요.")
+    raise HTTPException(503, "Cannot issue a code right now. Try again later.")
 
 
 @router.post("/uploads", status_code=201)
@@ -91,15 +91,15 @@ def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
             or row["expires_at"] < now
             or not hmac.compare_digest(row["upload_token_hash"], token_hash)
         ):
-            raise HTTPException(403, "업로드 권한이 없거나 예약이 만료되었습니다.")
+            raise HTTPException(403, "Upload not allowed or reservation expired.")
 
         try:
             blob_name, size = storage.save(blob.file, config.MAX_BLOB_BYTES)
         except storage.TooLarge:
-            raise HTTPException(413, "파일이 너무 큽니다.")
+            raise HTTPException(413, "File too large.")
         if size < MIN_BLOB_BYTES:
             storage.delete(blob_name)
-            raise HTTPException(422, "잘못된 파일입니다.")
+            raise HTTPException(422, "Invalid file.")
 
         try:
             conn.execute(
@@ -172,10 +172,10 @@ def fetch(body: FetchIn):
     if remaining <= 0:
         storage.delete(blob_name)
         return JSONResponse(
-            {"detail": "확인코드를 여러 번 틀려 파일이 삭제되었습니다.", "remaining": 0},
+            {"detail": "Too many wrong attempts. File deleted.", "remaining": 0},
             status_code=403,
         )
     return JSONResponse(
-        {"detail": "코드 또는 확인코드가 맞지 않습니다.", "remaining": remaining},
+        {"detail": "Wrong code or phrase.", "remaining": remaining},
         status_code=403,
     )

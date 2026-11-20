@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PrintCode — 올리기</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="entry" class="sheet">
+      <header class="strip">
+        <span><a href="/">HOME</a></span>
+        <span>UPLOAD</span>
+        <span>v0.1</span>
+      </header>
+
+      <div class="masthead">
+        <h1>PrintCode</h1>
+      </div>
+
+      <form id="upload-form" novalidate>
+        <div class="field">
+          <label class="key" for="file">01 / FILE</label>
+          <div class="val file-row">
+            <!-- 기본 파일 칸의 "선택된 파일 없음" 문구를 숨기고, 선택한 파일 이름만 보여준다 -->
+            <input type="file" id="file" class="visually-hidden" accept="application/pdf,.pdf" />
+            <label for="file" class="pick">파일 선택</label>
+            <span id="file-name" class="file-name"></span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="key" for="phrase">02 / Phrase</label>
+          <div class="val">
+            <!-- type=password는 브라우저가 한글 입력기를 꺼버려 한글 확인코드를 칠 수 없으므로 일반 텍스트로 둔다 -->
+            <input type="text" id="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="확인코드(선택)" />
+          </div>
+        </div>
+        <button type="submit">UPLOAD</button>
+      </form>
+
+      <output id="status" class="status" role="status"></output>
+
+      <section id="result" hidden>
+        <p class="result-head">CODE</p>
+        <samp id="code" class="code"></samp>
+        <p class="timer-row"><span>TIME LEFT</span><time id="timer" role="timer">30:00</time></p>
+        <button type="button" id="again" class="secondary">UPLOAD MORE</button>
+      </section>
+
+    </main>
+    <script type="module" src="/src/upload.js"></script>
+  </body>
+</html>

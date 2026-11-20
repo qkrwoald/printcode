@@ -33,7 +33,7 @@ function resetForm() {
   digits.forEach((d) => (d.value = ''));
   phraseInput.value = '';
   phraseRow.hidden = true;
-  submitBtn.textContent = '다음';
+  submitBtn.textContent = 'NEXT';
   setBusy(false); // 비활성 상태의 칸에는 포커스가 가지 않으므로 먼저 풀어 준다
   digits[0].focus();
 }
@@ -44,7 +44,7 @@ function invalidateLookup() {
     info = null;
     phraseRow.hidden = true;
     phraseInput.value = '';
-    submitBtn.textContent = '다음';
+    submitBtn.textContent = 'NEXT';
   }
 }
 
@@ -86,7 +86,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const code = getCode();
   if (!/^[0-9]{6}$/.test(code)) {
-    setStatus('코드 6자리를 모두 입력하세요.', true);
+    setStatus('Enter all 6 digits.', true);
     (digits.find((d) => !d.value) ?? digits[0]).focus();
     return;
   }
@@ -94,13 +94,13 @@ form.addEventListener('submit', async (e) => {
   setBusy(true);
   try {
     if (!info) {
-      setStatus('코드를 확인하는 중…');
+      setStatus('Checking code…');
       info = await lookup(code);
       if (info.has_phrase && !phraseInput.value) {
         // 확인코드를 빠뜨려 시도 횟수를 낭비하지 않도록 입력칸을 먼저 보여준다.
         phraseRow.hidden = false;
-        submitBtn.textContent = '출력';
-        setStatus('이 파일은 확인코드가 필요합니다.');
+        submitBtn.textContent = 'PRINT';
+        setStatus('Phrase required.');
         setBusy(false);
         phraseInput.focus();
         return;
@@ -116,7 +116,7 @@ form.addEventListener('submit', async (e) => {
 function handleError(err) {
   if (err instanceof ApiError && err.status === 403) {
     if (err.remaining > 0) {
-      setStatus(`${err.message} (남은 시도: ${err.remaining}회)`, true);
+      setStatus(`${err.message} (${err.remaining} ${err.remaining === 1 ? 'attempt' : 'attempts'} left)`, true);
       phraseInput.value = '';
       phraseInput.focus();
     } else {
@@ -127,12 +127,12 @@ function handleError(err) {
     setStatus(err.message, true);
     resetForm();
   } else {
-    setStatus(err.message || '파일을 열지 못했습니다.', true);
+    setStatus(err.message || 'Could not open file.', true);
   }
 }
 
 async function decryptAndPrint(code, phrase) {
-  setStatus('확인 중… (몇 초 걸릴 수 있습니다)');
+  setStatus('Verifying… (may take a few seconds)');
   const { encKey, authToken } = await deriveKeys(code, phrase, b64uDecode(info.salt), info.kdf);
   const tokenB64u = b64uEncode(authToken);
   authToken.fill(0);
@@ -141,14 +141,14 @@ async function decryptAndPrint(code, phrase) {
   // 서버가 암호문을 내려줬다면 이미 서버에서 삭제됐다 (1회성).
   phraseInput.value = '';
 
-  setStatus('문서를 여는 중…');
+  setStatus('Opening document…');
   let pdfBytes;
   let view;
   try {
     ({ pdfBytes } = await decryptPackage(blob, encKey));
     view = await renderPdf(pdfBytes, printArea);
   } catch {
-    throw new Error('파일을 열 수 없습니다. 손상되었거나 지원하지 않는 PDF입니다.');
+    throw new Error('Cannot open file. Damaged or unsupported PDF.');
   } finally {
     blob.fill(0);
     pdfBytes?.fill(0);
@@ -163,12 +163,12 @@ async function decryptAndPrint(code, phrase) {
     } finally {
       resetForm();
       setBusy(false);
-      setStatus('출력을 마쳤습니다. 화면과 메모리에서 문서를 지웠습니다.');
+      setStatus('Done. Document cleared from screen and memory.');
     }
   };
   window.addEventListener('afterprint', cleanup, { once: true });
 
-  setStatus(`인쇄 창을 여는 중… (${view.numPages}쪽)`);
+  setStatus(`Opening print dialog… (${view.numPages} ${view.numPages === 1 ? 'page' : 'pages'})`);
   window.print();
   // afterprint가 오지 않는 브라우저 대비 안전장치. print()가 바로 돌아오는 브라우저도 있어
   // 너무 짧으면 인쇄 전에 지워지므로 넉넉히 둔다. (M2에서 2분 무동작 정리로 대체)

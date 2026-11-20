@@ -13,7 +13,7 @@ async function request(path, options) {
     // credentials: 'omit' — 이 서비스는 쿠키를 쓰지 않는다.
     res = await fetch(path, { ...options, credentials: 'omit', cache: 'no-store' });
   } catch {
-    throw new ApiError(0, '서버에 연결할 수 없습니다.');
+    throw new ApiError(0, 'Cannot reach server.');
   }
   if (res.ok) return res;
   let body = {};
@@ -22,7 +22,7 @@ async function request(path, options) {
   } catch {
     /* 본문 없음 */
   }
-  const message = typeof body.detail === 'string' ? body.detail : '요청을 처리하지 못했습니다.';
+  const message = typeof body.detail === 'string' ? body.detail : 'Request failed.';
   throw new ApiError(res.status, message, { remaining: body.remaining });
 }
 

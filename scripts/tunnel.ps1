@@ -1,6 +1,6 @@
 ﻿# 시험용: 프론트를 빌드하고, 로컬 서버를 띄운 뒤 Cloudflare 임시 터널로 HTTPS 주소를 연다.
 # 사용: 프로젝트 폴더에서  .\scripts\tunnel.ps1
-# 연결되면 주소를 크게 표시하고, 출력 주소를 클립보드에 복사하고, 업로드 화면을 브라우저로 연다.
+# 연결되면 주소를 크게 표시하고, 출력 주소를 클립보드에 복사하고, 메인 화면을 브라우저로 연다.
 # 종료: Ctrl+C (서버도 함께 종료됨)
 #
 # 주의: M4(요청 횟수 제한) 전이므로 시험할 때만 켜고, 주소를 공개적으로 퍼뜨리지 않는다.
@@ -67,7 +67,7 @@ try {
     Write-Host $line -ForegroundColor Green
     Write-Host '  PrintCode 시험 주소 (이 창을 닫거나 Ctrl+C를 누르면 꺼집니다)' -ForegroundColor Green
     Write-Host ''
-    Write-Host "  업로드 (내 노트북)    $url/" -ForegroundColor Yellow
+    Write-Host "  메인                  $url/" -ForegroundColor Yellow
     Write-Host "  출력 (프린터실 PC)    $url/print/" -ForegroundColor Yellow
     Write-Host $line -ForegroundColor Green
     Write-Host "  출력 주소를 클립보드에 복사했습니다. 터널 로그: $log"
@@ -75,7 +75,7 @@ try {
     Write-Host ''
 
     Set-Clipboard -Value "$url/print/"
-    Start-Process "$url/"  # 기본 브라우저로 업로드 화면 열기
+    Start-Process "$url/"  # 기본 브라우저로 메인 화면 열기
 
     Wait-Process -Id $tunnel.Id
 } finally {

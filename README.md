@@ -11,9 +11,11 @@
 
 ## 사용 흐름
 
-1. 노트북에서 `/` 접속 → PDF 선택 → (선택) 확인코드 입력 → **암호화해서 올리기**
-2. 화면에 나온 6자리 코드를 기억
-3. 프린터실 PC에서 `/print/` 접속 → 코드 입력 → (확인코드) → 인쇄 창에서 출력
+메인(`/`)에서 **UPLOAD** 또는 **PRINT**를 고릅니다.
+
+1. 노트북에서 UPLOAD(`/upload/`) → PDF 선택 → (선택) 확인코드 입력 → **UPLOAD**
+2. 화면에 나온 6자리 코드를 기억 (남은 시간이 1초씩 표시됨)
+3. 프린터실 PC에서 PRINT(`/print/`) → 코드 6칸 입력 → (확인코드) → 인쇄 창에서 출력
 4. 인쇄가 끝나면 화면과 메모리에서 문서가 지워집니다. 같은 코드로는 다시 출력할 수 없습니다.
 
 | 모드 | 외부인의 코드 추측 | 서버 관리자의 열람 |
@@ -40,7 +42,7 @@ cd frontend; npm run build; cd ..
 python -m uvicorn --app-dir backend app.main:app --port 8000
 ```
 
-→ http://localhost:8000 (업로드), http://localhost:8000/print/ (출력)
+→ http://localhost:8000 (메인), `/upload/` (업로드), `/print/` (출력)
 
 ### 프론트 수정하면서 실행
 
@@ -71,7 +73,7 @@ winget install --id Cloudflare.cloudflared
 .\scripts\tunnel.ps1
 ```
 
-연결되면 화면에 업로드·출력 주소가 초록 상자로 표시되고, 업로드 화면이 브라우저로 열리며,
+연결되면 화면에 메인·출력 주소가 초록 상자로 표시되고, 메인 화면이 브라우저로 열리며,
 출력 주소(`/print/`)는 클립보드에 복사됩니다. Ctrl+C로 끄면 서버도 함께 종료됩니다.
 주소는 실행할 때마다 바뀝니다. cloudflared의 자세한 로그는 `%TEMP%\printcode-tunnel.log`에 남습니다.
 

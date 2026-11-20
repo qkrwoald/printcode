@@ -56,9 +56,9 @@ async def security_middleware(request: Request, call_next):
         # 본문을 읽기 전에 크기를 먼저 확인해 큰 업로드를 일찍 거절한다.
         length = request.headers.get("content-length", "")
         if not length.isdigit():
-            response = JSONResponse({"detail": "Content-Length가 필요합니다."}, status_code=411)
+            response = JSONResponse({"detail": "Content-Length required."}, status_code=411)
         elif int(length) > config.MAX_BLOB_BYTES + 16 * 1024:  # 폼 필드 여유분
-            response = JSONResponse({"detail": "파일이 너무 큽니다."}, status_code=413)
+            response = JSONResponse({"detail": "File too large."}, status_code=413)
     if response is None:
         response = await call_next(request)
     response.headers.update(SECURITY_HEADERS)
