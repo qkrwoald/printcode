@@ -48,7 +48,11 @@ SECURITY_HEADERS = {
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     response = None
-    if request.method == "POST" and request.url.path == "/api/uploads":
+    if (
+        request.method == "POST"
+        and request.url.path == "/api/uploads"
+        and config.MAX_BLOB_BYTES is not None
+    ):
         # 본문을 읽기 전에 크기를 먼저 확인해 큰 업로드를 일찍 거절한다.
         length = request.headers.get("content-length", "")
         if not length.isdigit():

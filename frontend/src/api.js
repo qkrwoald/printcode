@@ -34,6 +34,10 @@ function postJson(path, data) {
   });
 }
 
+export async function getConfig() {
+  return (await request('/api/config', { method: 'GET' })).json();
+}
+
 export async function reserveCode() {
   return (await request('/api/codes', { method: 'POST' })).json();
 }

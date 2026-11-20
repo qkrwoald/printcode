@@ -1,8 +1,10 @@
 // 업로드 화면 (내 노트북). 사용자 입력은 textContent로만 화면에 넣는다 (XSS 방지).
-import { reserveCode, uploadBlob } from './api.js';
+import { getConfig, reserveCode, uploadBlob } from './api.js';
 import { b64uEncode, normalizePhrase, PHRASE_MIN_LENGTH, sealFile, validatePhrase } from './crypto.js';
 
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
+// 최대 크기는 서버 설정을 따른다 (null = 제한 없음). 서버도 같은 값으로 다시 검사한다.
+let maxPdfBytes = null;
+const toMB = (bytes) => Math.round(bytes / (1024 * 1024));
 
 const $ = (id) => document.getElementById(id);
 const form = $('upload-form');
@@ -31,14 +33,22 @@ function updateModeNote() {
 }
 
 phraseInput.addEventListener('input', updateModeNote);
-$('show-phrase').addEventListener('change', (e) => {
-  phraseInput.type = e.target.checked ? 'text' : 'password';
-});
 updateModeNote();
+
+getConfig()
+  .then((cfg) => {
+    maxPdfBytes = cfg.max_pdf_bytes;
+    $('size-limit').textContent = maxPdfBytes ? `PDF · ${toMB(maxPdfBytes)}MB 이하` : 'PDF';
+  })
+  .catch(() => {
+    /* 서버가 업로드 때 다시 검사하므로 여기서 실패해도 진행 가능 */
+  });
 
 async function readPdf(file) {
   if (!file) throw new Error('PDF 파일을 선택하세요.');
-  if (file.size > MAX_PDF_BYTES) throw new Error('파일은 20MB 이하만 올릴 수 있습니다.');
+  if (maxPdfBytes && file.size > maxPdfBytes) {
+    throw new Error(`파일은 ${toMB(maxPdfBytes)}MB 이하만 올릴 수 있습니다.`);
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
   // 확장자만 믿지 않고 PDF 시그니처를 확인한다.
   const sig = new TextDecoder().decode(bytes.subarray(0, 5));

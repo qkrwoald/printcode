@@ -146,6 +146,21 @@ def test_oversize_upload_rejected(client, monkeypatch):
     assert blob_count() == before
 
 
+def test_config_reports_limit(client, monkeypatch):
+    assert client.get("/api/config").json() == {"max_pdf_bytes": 90 * 1024 * 1024}
+    monkeypatch.setattr(config, "MAX_PDF_BYTES", None)
+    assert client.get("/api/config").json() == {"max_pdf_bytes": None}
+
+
+def test_unlimited_size_accepts_large_upload(client, monkeypatch):
+    # 0(제한 없음)으로 설정하면 기본 상한을 넘는 업로드도 받는다
+    monkeypatch.setattr(config, "MAX_BLOB_BYTES", None)
+    big = b"\x01" + os.urandom(200_000)
+    code, token, blob = make_upload(client, blob=big)
+    res = client.post("/api/fetch", json={"code": code, "auth_token": b64u_encode(token)})
+    assert res.content == big
+
+
 def test_security_headers(client):
     res = client.post("/api/lookup", json={"code": "000000"})
     assert "frame-ancestors 'none'" in res.headers["content-security-policy"]

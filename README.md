@@ -58,6 +58,27 @@ cd frontend; npm run dev
 
 > Web Crypto API는 HTTPS 또는 `localhost`에서만 동작합니다. 배포 시에는 반드시 HTTPS를 붙이세요.
 
+### 프린터실 PC에서 시험하기 (임시 HTTPS 터널)
+
+노트북의 서버를 Cloudflare 임시 터널로 인터넷에 연결합니다. 계정은 필요 없습니다.
+
+```powershell
+# 최초 1회
+winget install --id Cloudflare.cloudflared
+```
+
+```powershell
+.\scripts\tunnel.ps1
+```
+
+로그에 나오는 `https://<무작위>.trycloudflare.com` 주소로 접속합니다 (업로드 `/`, 출력 `/print/`).
+Ctrl+C로 끄면 서버도 함께 종료됩니다. 주소는 실행할 때마다 바뀝니다.
+
+- 노트북이 켜져 있고 스크립트가 실행 중일 때만 접속됩니다.
+- 요청 횟수 제한(M4) 전이므로 **시험할 때만 켜고 주소를 공개하지 마세요.**
+- HTTPS는 Cloudflare에서 끝나므로 Cloudflare는 코드·인증 토큰 같은 요청 내용을 볼 수 있습니다.
+  파일은 브라우저에서 암호화된 상태라 내용은 볼 수 없습니다.
+
 ## 테스트
 
 ```powershell
@@ -75,7 +96,12 @@ cd frontend; npm test
 | `PRINTCODE_DATA_DIR` | `./data` | SQLite DB와 암호문 저장 폴더 |
 | `PRINTCODE_FILE_TTL` | `1800` | 업로드 파일 유효 시간(초) |
 | `PRINTCODE_RESERVE_TTL` | `300` | 코드 예약 후 업로드까지 허용 시간(초) |
-| `PRINTCODE_MAX_BLOB` | 약 20MB | 암호문 최대 크기(바이트) |
+| `PRINTCODE_MAX_PDF_MB` | `90` | PDF 최대 크기(MB). `0`이면 제한 없음. 업로드 화면도 이 값을 따름 |
+
+> 기본 90MB는 Cloudflare 임시 터널의 요청 크기 제한(100MB) 때문입니다.
+> 직접 운영하는 서버에서는 `0`(제한 없음)으로 둘 수 있지만, 그러면 누구나 서버 디스크를 채울 수 있으므로
+> IP별 업로드 횟수 제한(M4)과 함께 쓰세요. 이 경우에도 브라우저가 파일 전체를 메모리에서 한 번에
+> 암호화·복호화하므로, 실제 한계는 업로드·출력 PC의 메모리입니다.
 
 ## 구조
 

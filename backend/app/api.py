@@ -43,6 +43,12 @@ def _get_ready(conn: sqlite3.Connection, code: str, now: float):
     ).fetchone()
 
 
+@router.get("/config")
+def get_config():
+    """업로드 화면이 미리 크기를 확인할 수 있도록 공개 설정값을 알려준다. null이면 제한 없음."""
+    return {"max_pdf_bytes": config.MAX_PDF_BYTES}
+
+
 @router.post("/codes", status_code=201)
 def reserve_code():
     """활성 코드와 겹치지 않는 6자리 코드를 예약한다."""

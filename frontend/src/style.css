@@ -157,22 +157,6 @@ input[type='file']::file-selector-button:hover {
   color: var(--paper);
 }
 
-.check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font: 12px var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--ink);
-}
-
 /* 출력 화면 코드 입력: 큰 고정폭 숫자 칸 */
 .code-input {
   font: 700 clamp(2rem, 8vw, 3.25rem) / 1 var(--font-mono) !important;

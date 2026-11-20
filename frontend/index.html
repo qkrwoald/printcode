@@ -21,7 +21,7 @@
 
       <form id="upload-form" novalidate>
         <div class="field">
-          <label class="key" for="file">01 / File<small>PDF · 20MB 이하</small></label>
+          <label class="key" for="file">01 / File<small id="size-limit">PDF</small></label>
           <div class="val">
             <input type="file" id="file" accept="application/pdf,.pdf" />
           </div>
@@ -29,8 +29,8 @@
         <div class="field">
           <label class="key" for="phrase">02 / Phrase<small>선택 · 4자 이상</small></label>
           <div class="val">
-            <input type="password" id="phrase" autocomplete="off" spellcheck="false" placeholder="확인코드" />
-            <label class="check"><input type="checkbox" id="show-phrase" /> 확인코드 보기</label>
+            <!-- type=password는 브라우저가 한글 입력기를 꺼버려 한글 확인코드를 칠 수 없으므로 일반 텍스트로 둔다 -->
+            <input type="text" id="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="확인코드" />
           </div>
         </div>
         <dl class="mode">

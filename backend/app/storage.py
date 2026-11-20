@@ -17,7 +17,7 @@ def _path(blob_name: str) -> Path:
     return config.BLOB_DIR / blob_name
 
 
-def save(src: BinaryIO, max_bytes: int) -> tuple[str, int]:
+def save(src: BinaryIO, max_bytes: int | None) -> tuple[str, int]:
     """src를 무작위 이름 파일로 복사하고 (파일명, 크기)를 돌려준다. 사용자 파일명은 쓰지 않는다."""
     blob_name = secrets.token_hex(16)
     path = _path(blob_name)
@@ -26,7 +26,7 @@ def save(src: BinaryIO, max_bytes: int) -> tuple[str, int]:
         with open(path, "xb") as dst:
             while chunk := src.read(1024 * 1024):
                 written += len(chunk)
-                if written > max_bytes:
+                if max_bytes is not None and written > max_bytes:
                     raise TooLarge()
                 dst.write(chunk)
     except BaseException:
