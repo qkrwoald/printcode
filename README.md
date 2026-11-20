@@ -71,8 +71,9 @@ winget install --id Cloudflare.cloudflared
 .\scripts\tunnel.ps1
 ```
 
-로그에 나오는 `https://<무작위>.trycloudflare.com` 주소로 접속합니다 (업로드 `/`, 출력 `/print/`).
-Ctrl+C로 끄면 서버도 함께 종료됩니다. 주소는 실행할 때마다 바뀝니다.
+연결되면 화면에 업로드·출력 주소가 초록 상자로 표시되고, 업로드 화면이 브라우저로 열리며,
+출력 주소(`/print/`)는 클립보드에 복사됩니다. Ctrl+C로 끄면 서버도 함께 종료됩니다.
+주소는 실행할 때마다 바뀝니다. cloudflared의 자세한 로그는 `%TEMP%\printcode-tunnel.log`에 남습니다.
 
 - 노트북이 켜져 있고 스크립트가 실행 중일 때만 접속됩니다.
 - 요청 횟수 제한(M4) 전이므로 **시험할 때만 켜고 주소를 공개하지 마세요.**

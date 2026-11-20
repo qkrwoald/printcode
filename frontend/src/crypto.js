@@ -8,7 +8,6 @@ import { argon2id } from 'hash-wasm';
 // Argon2id 기본값. m=64MiB: GPU 대량 대입을 어렵게 하면서 공용 PC에서도 감당 가능한 메모리.
 // 파일마다 서버에 함께 저장하므로 나중에 값을 바꿔도 기존 파일은 그대로 열린다.
 export const KDF_DEFAULTS = Object.freeze({ m: 64 * 1024, t: 3, p: 1 });
-export const PHRASE_MIN_LENGTH = 4;
 
 const FORMAT_VERSION = 1;
 const IV_BYTES = 12;
@@ -24,12 +23,6 @@ const INFO_AUTH = te.encode('printcode/v1/auth');
 // NFC로 통일하지 않으면 업로드한 노트북과 공용 PC에서 다른 키가 나와 복호화에 실패한다.
 export function normalizePhrase(phrase) {
   return (phrase ?? '').normalize('NFC');
-}
-
-/** 확인코드 검증: 비어 있거나(사용 안 함) 4자 이상. 글자 수는 코드포인트 기준. */
-export function validatePhrase(phrase) {
-  const p = normalizePhrase(phrase);
-  return p.length === 0 || [...p].length >= PHRASE_MIN_LENGTH;
 }
 
 export function randomSalt() {

@@ -3,53 +3,52 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PrintCode — 파일 올리기</title>
+    <title>PrintCode — 올리기</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main id="entry" class="sheet">
       <header class="strip">
-        <span>REV M1</span>
-        <span>UNIT / UPLOAD</span>
-        <span>E2E · AES-256-GCM</span>
+        <span></span>
+        <span>UPLOAD</span>
+        <span>v0.1</span>
       </header>
 
       <div class="masthead">
         <h1>PrintCode</h1>
-        <p>내 노트북에서 PDF를 암호화해 올리고, 프린터실 PC에서 6자리 코드로 출력하세요.</p>
+        <p>파일을 올리고, 코드로 출력하세요.</p>
       </div>
 
       <form id="upload-form" novalidate>
         <div class="field">
-          <label class="key" for="file">01 / File<small id="size-limit">PDF</small></label>
-          <div class="val">
-            <input type="file" id="file" accept="application/pdf,.pdf" />
+          <label class="key" for="file">01 / FILE</label>
+          <div class="val file-row">
+            <!-- 기본 파일 칸의 "선택된 파일 없음" 문구를 숨기고, 선택한 파일 이름만 보여준다 -->
+            <input type="file" id="file" class="visually-hidden" accept="application/pdf,.pdf" />
+            <label for="file" class="pick">파일 선택</label>
+            <span id="file-name" class="file-name"></span>
           </div>
         </div>
         <div class="field">
-          <label class="key" for="phrase">02 / Phrase<small>선택 · 4자 이상</small></label>
+          <label class="key" for="phrase">02 / 확인코드(선택)</label>
           <div class="val">
             <!-- type=password는 브라우저가 한글 입력기를 꺼버려 한글 확인코드를 칠 수 없으므로 일반 텍스트로 둔다 -->
-            <input type="text" id="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="확인코드" />
+            <input type="text" id="phrase" autocomplete="off" autocapitalize="off" spellcheck="false" />
           </div>
         </div>
-        <dl class="mode">
-          <dt>MODE</dt>
-          <dd id="mode-note"></dd>
-        </dl>
-        <button type="submit">암호화해서 올리기</button>
+        <button type="submit">UPLOAD</button>
       </form>
 
       <output id="status" class="status" role="status"></output>
 
       <section id="result" hidden>
-        <p class="result-head">Code / 프린터실 PC에서 입력하세요</p>
+        <p class="result-head">CODE</p>
         <samp id="code" class="code"></samp>
         <p id="result-note" class="result-note"></p>
         <button type="button" id="again" class="secondary">다른 파일 올리기</button>
       </section>
 
-      <a class="foot" href="/print/">프린터실 PC에서 출력하기</a>
+      <a class="foot" href="/print/">PRINT</a>
     </main>
     <script type="module" src="/src/upload.js"></script>
   </body>

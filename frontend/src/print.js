@@ -6,7 +6,7 @@ import { renderPdf } from './pdfview.js';
 
 const $ = (id) => document.getElementById(id);
 const form = $('code-form');
-const codeInput = $('code');
+const digits = [...document.querySelectorAll('#code-digits .digit')]; // 코드 6칸
 const phraseInput = $('phrase');
 const phraseRow = $('phrase-row');
 const submitBtn = $('submit');
@@ -20,37 +20,74 @@ function setStatus(text, isError = false) {
   statusEl.classList.toggle('error', isError);
 }
 
+const getCode = () => digits.map((d) => d.value).join('');
+
 function setBusy(busy) {
-  codeInput.disabled = busy;
+  digits.forEach((d) => (d.disabled = busy));
   phraseInput.disabled = busy;
   submitBtn.disabled = busy;
 }
 
 function resetForm() {
   info = null;
-  codeInput.value = '';
+  digits.forEach((d) => (d.value = ''));
   phraseInput.value = '';
   phraseRow.hidden = true;
   submitBtn.textContent = '다음';
-  codeInput.focus();
+  setBusy(false); // 비활성 상태의 칸에는 포커스가 가지 않으므로 먼저 풀어 준다
+  digits[0].focus();
 }
 
-// 숫자만 입력되게 하고, 코드를 바꾸면 이전 조회 결과를 버린다.
-codeInput.addEventListener('input', () => {
-  codeInput.value = codeInput.value.replace(/[^0-9]/g, '').slice(0, 6);
+// 코드를 바꾸면 이전 조회 결과를 버린다.
+function invalidateLookup() {
   if (info) {
     info = null;
     phraseRow.hidden = true;
     phraseInput.value = '';
     submitBtn.textContent = '다음';
   }
+}
+
+// start칸부터 숫자를 차례로 채운다 (붙여넣기용).
+function fillFrom(start, text) {
+  const nums = text.replace(/[^0-9]/g, '').slice(0, digits.length - start);
+  [...nums].forEach((n, k) => (digits[start + k].value = n));
+  digits[Math.min(start + nums.length, digits.length - 1)].focus();
+}
+
+digits.forEach((d, i) => {
+  // 칸에 들어가면 내용을 선택해, 다시 치면 바로 덮어쓰게 한다.
+  d.addEventListener('focus', () => d.select());
+  d.addEventListener('input', () => {
+    d.value = d.value.replace(/[^0-9]/g, '').slice(-1); // 숫자 한 개만
+    if (d.value && i < digits.length - 1) digits[i + 1].focus();
+    invalidateLookup();
+  });
+  d.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !d.value && i > 0) {
+      e.preventDefault();
+      digits[i - 1].value = '';
+      digits[i - 1].focus();
+      invalidateLookup();
+    } else if (e.key === 'ArrowLeft' && i > 0) {
+      digits[i - 1].focus();
+    } else if (e.key === 'ArrowRight' && i < digits.length - 1) {
+      digits[i + 1].focus();
+    }
+  });
+  d.addEventListener('paste', (e) => {
+    e.preventDefault();
+    fillFrom(i, e.clipboardData?.getData('text') ?? '');
+    invalidateLookup();
+  });
 });
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const code = codeInput.value;
+  const code = getCode();
   if (!/^[0-9]{6}$/.test(code)) {
-    setStatus('6자리 숫자 코드를 입력하세요.', true);
+    setStatus('코드 6자리를 모두 입력하세요.', true);
+    (digits.find((d) => !d.value) ?? digits[0]).focus();
     return;
   }
 

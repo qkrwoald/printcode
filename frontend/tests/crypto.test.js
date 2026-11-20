@@ -9,7 +9,6 @@ import {
   KDF_DEFAULTS,
   sealFile,
   sha256,
-  validatePhrase,
 } from '../src/crypto.js';
 
 const CODE = '123456';
@@ -83,12 +82,10 @@ test('같은 파일도 매번 다른 salt·암호문', async () => {
   assert.notDeepEqual(a.blob, b.blob);
 });
 
-test('확인코드 길이 검증 (코드포인트 기준)', () => {
-  assert.ok(validatePhrase(''));
-  assert.ok(validatePhrase('가나다라'));
-  assert.ok(validatePhrase('a!1한'));
-  assert.equal(validatePhrase('abc'), false);
-  assert.equal(validatePhrase('😀😀😀'), false); // 이모지 3개 = 3자
+test('한 글자 확인코드도 사용 가능', async () => {
+  const sealed = await sealFile({ code: CODE, phrase: '가', pdfBytes: pdf.slice(), meta });
+  assert.ok((await open(sealed, CODE, '가')).authOk);
+  assert.equal((await open(sealed, CODE, '')).authOk, false);
 });
 
 test('base64url 왕복', () => {

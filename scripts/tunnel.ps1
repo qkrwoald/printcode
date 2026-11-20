@@ -1,5 +1,6 @@
 ﻿# 시험용: 프론트를 빌드하고, 로컬 서버를 띄운 뒤 Cloudflare 임시 터널로 HTTPS 주소를 연다.
 # 사용: 프로젝트 폴더에서  .\scripts\tunnel.ps1
+# 연결되면 주소를 크게 표시하고, 출력 주소를 클립보드에 복사하고, 업로드 화면을 브라우저로 연다.
 # 종료: Ctrl+C (서버도 함께 종료됨)
 #
 # 주의: M4(요청 횟수 제한) 전이므로 시험할 때만 켜고, 주소를 공개적으로 퍼뜨리지 않는다.
@@ -35,14 +36,50 @@ $server = Start-Process -FilePath $python -PassThru -NoNewWindow -ArgumentList @
     '--proxy-headers', '--forwarded-allow-ips', '127.0.0.1'
 )
 
+$tunnel = $null
+# cloudflared의 긴 로그는 파일로 보내고, 화면에는 주소만 보여준다.
+$log = Join-Path $env:TEMP 'printcode-tunnel.log'
 try {
     Start-Sleep -Seconds 2
     if ($server.HasExited) { throw '서버가 시작되지 않았습니다. 포트 8000을 다른 프로그램이 쓰고 있는지 확인하세요.' }
 
-    Write-Host '[3/3] 터널 연결 — 아래 로그에 나오는 https://....trycloudflare.com 주소로 접속하세요' -ForegroundColor Cyan
-    Write-Host '      업로드: <주소>/      출력: <주소>/print/' -ForegroundColor Cyan
-    cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$port"
+    Write-Host '[3/3] 터널 연결 중… (최대 60초)' -ForegroundColor Cyan
+    Remove-Item $log -ErrorAction SilentlyContinue
+    $tunnel = Start-Process -FilePath 'cloudflared' -PassThru -NoNewWindow -RedirectStandardError $log -ArgumentList @(
+        'tunnel', '--no-autoupdate', '--url', "http://127.0.0.1:$port"
+    )
+
+    # 로그에서 주소를 찾고, 연결이 실제로 등록될 때까지 기다린다.
+    $url = $null
+    $ready = $false
+    for ($i = 0; $i -lt 120 -and -not $ready; $i++) {
+        Start-Sleep -Milliseconds 500
+        if ($tunnel.HasExited) { break }
+        $text = Get-Content $log -Raw -ErrorAction SilentlyContinue
+        if (-not $text) { continue }
+        if (-not $url -and $text -match 'https://(?!api\.)[a-z0-9-]+\.trycloudflare\.com') { $url = $Matches[0] }
+        $ready = $url -and ($text -match 'Registered tunnel connection')
+    }
+    if (-not $url) { throw "터널 주소를 받지 못했습니다. 로그를 확인하세요: $log" }
+
+    $line = '=' * 72
+    Write-Host ''
+    Write-Host $line -ForegroundColor Green
+    Write-Host '  PrintCode 시험 주소 (이 창을 닫거나 Ctrl+C를 누르면 꺼집니다)' -ForegroundColor Green
+    Write-Host ''
+    Write-Host "  업로드 (내 노트북)    $url/" -ForegroundColor Yellow
+    Write-Host "  출력 (프린터실 PC)    $url/print/" -ForegroundColor Yellow
+    Write-Host $line -ForegroundColor Green
+    Write-Host "  출력 주소를 클립보드에 복사했습니다. 터널 로그: $log"
+    Write-Host '  주소가 바로 안 열리면 몇십 초 뒤 새로고침하세요.'
+    Write-Host ''
+
+    Set-Clipboard -Value "$url/print/"
+    Start-Process "$url/"  # 기본 브라우저로 업로드 화면 열기
+
+    Wait-Process -Id $tunnel.Id
 } finally {
+    if ($tunnel -and -not $tunnel.HasExited) { Stop-Process -Id $tunnel.Id -Force }
     if (-not $server.HasExited) { Stop-Process -Id $server.Id -Force }
-    Write-Host '서버를 종료했습니다.' -ForegroundColor Cyan
+    Write-Host '터널과 서버를 종료했습니다.' -ForegroundColor Cyan
 }

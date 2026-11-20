@@ -10,25 +10,33 @@
     <main id="entry" class="sheet">
       <div class="hazard" aria-hidden="true"></div>
       <header class="strip">
-        <span>REV M1</span>
-        <span>UNIT / PRINT</span>
-        <span>NO DISK · NO LOGIN</span>
+        <span></span>
+        <span>PRINT</span>
+        <span>v0.1</span>
       </header>
 
       <div class="masthead">
         <h1>PrintCode</h1>
-        <p>노트북에서 받은 6자리 코드를 입력하세요.</p>
+        <p>코드를 입력하세요.</p>
       </div>
 
       <form id="code-form" novalidate>
         <div class="field">
-          <label class="key" for="code">01 / Code<small>숫자 6자리</small></label>
+          <label class="key" for="code-1">01 / CODE</label>
           <div class="val">
-            <input id="code" class="code-input" inputmode="numeric" autocomplete="off" maxlength="6" />
+            <!-- 6칸으로 나눠 6자리라는 것을 바로 알 수 있게 한다 -->
+            <div id="code-digits" class="digits" role="group" aria-label="코드 6자리">
+              <input id="code-1" class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="1번째 숫자" />
+              <input class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="2번째 숫자" />
+              <input class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="3번째 숫자" />
+              <input class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="4번째 숫자" />
+              <input class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="5번째 숫자" />
+              <input class="digit" inputmode="numeric" autocomplete="off" maxlength="1" aria-label="6번째 숫자" />
+            </div>
           </div>
         </div>
         <div id="phrase-row" class="field" hidden>
-          <label class="key" for="phrase">02 / Phrase<small>업로드할 때 정한 확인코드</small></label>
+          <label class="key" for="phrase">02 / 확인코드</label>
           <div class="val">
             <!-- type=password는 한글 입력기를 꺼버리므로 일반 텍스트. autocomplete=off로 공용 PC 입력 기록에 남기지 않는다 -->
             <input id="phrase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" />
@@ -38,11 +46,7 @@
       </form>
 
       <output id="status" class="status" role="status"></output>
-
-      <ul class="notes">
-        <li>이 PC에는 파일이 저장되지 않습니다. 인쇄가 끝나면 화면과 메모리에서 문서를 지웁니다.</li>
-        <li>양면 인쇄는 인쇄 창에서 직접 선택하세요.</li>
-      </ul>
+      <div class="hazard" aria-hidden="true"></div>
     </main>
     <div id="print-area"></div>
     <script type="module" src="/src/print.js"></script>
