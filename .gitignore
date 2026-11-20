@@ -1,0 +1,17 @@
+# 가상환경·의존성
+.venv/
+node_modules/
+
+# 빌드 결과
+frontend/dist/
+
+# 서버 데이터 (암호문·DB는 절대 커밋하지 않음)
+data/
+
+# Python 캐시
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# 설치형 스킬(39MB): skills-lock.json으로 다시 설치 (npx skills experimental_install)
+.claude/skills/design-taste-frontend/

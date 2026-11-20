@@ -1,0 +1,88 @@
+# PrintCode
+
+프린터실 공용 PC에 로그인하거나 파일을 내려받지 않고, **6자리 코드로 출력**하는 웹 서비스입니다.
+
+- 내 노트북 브라우저에서 PDF를 **암호화한 뒤** 업로드합니다. 서버에는 암호문만 남습니다.
+- 공용 PC에서 코드(+확인코드)를 입력하면 브라우저 메모리에서 복호화해 인쇄 창을 엽니다.
+- 한 번 출력하면 서버의 암호문은 즉시 삭제됩니다.
+
+> 현재 단계: **M1** (최소 흐름). 출력 전용 팝업·WebSocket·자동 정리(M2), 출력 설정(M3),
+> 보안 강화(M4), docx/pptx(M5), hwp(M6)는 아직입니다.
+
+## 사용 흐름
+
+1. 노트북에서 `/` 접속 → PDF 선택 → (선택) 확인코드 입력 → **암호화해서 올리기**
+2. 화면에 나온 6자리 코드를 기억
+3. 프린터실 PC에서 `/print/` 접속 → 코드 입력 → (확인코드) → 인쇄 창에서 출력
+4. 인쇄가 끝나면 화면과 메모리에서 문서가 지워집니다. 같은 코드로는 다시 출력할 수 없습니다.
+
+| 모드 | 외부인의 코드 추측 | 서버 관리자의 열람 |
+|---|---|---|
+| 확인코드 없음 | 5회 실패 시 삭제 + 30분 만료로 방어 | **막지 못함** (서버가 코드를 앎) |
+| 확인코드 있음 | 위와 같음 | 불가 (보안 수준은 확인코드 강도에 비례) |
+
+## 실행 방법 (개발)
+
+필요: Python 3.11 이상, Node.js 20 이상
+
+```powershell
+# 최초 1회
+py -3.14 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+cd frontend; npm install; cd ..
+```
+
+### 빌드한 화면으로 실행 (간단)
+
+```powershell
+cd frontend; npm run build; cd ..
+python -m uvicorn --app-dir backend app.main:app --port 8000
+```
+
+→ http://localhost:8000 (업로드), http://localhost:8000/print/ (출력)
+
+### 프론트 수정하면서 실행
+
+터미널 두 개를 씁니다. Vite가 `/api` 요청을 8000번으로 넘깁니다.
+
+```powershell
+python -m uvicorn --app-dir backend app.main:app --port 8000 --reload
+```
+
+```powershell
+cd frontend; npm run dev
+```
+
+→ http://localhost:5173
+
+> Web Crypto API는 HTTPS 또는 `localhost`에서만 동작합니다. 배포 시에는 반드시 HTTPS를 붙이세요.
+
+## 테스트
+
+```powershell
+cd backend; python -m pytest
+```
+
+```powershell
+cd frontend; npm test
+```
+
+## 설정 (환경변수)
+
+| 이름 | 기본값 | 설명 |
+|---|---|---|
+| `PRINTCODE_DATA_DIR` | `./data` | SQLite DB와 암호문 저장 폴더 |
+| `PRINTCODE_FILE_TTL` | `1800` | 업로드 파일 유효 시간(초) |
+| `PRINTCODE_RESERVE_TTL` | `300` | 코드 예약 후 업로드까지 허용 시간(초) |
+| `PRINTCODE_MAX_BLOB` | 약 20MB | 암호문 최대 크기(바이트) |
+
+## 구조
+
+```
+backend/app/   FastAPI: api.py(엔드포인트) db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증)
+frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) upload.js print.js pdfview.js(pdf.js) api.js
+```
+
+암호화 설계: `master = Argon2id(code|phrase, salt)` → HKDF로 `enc_key`(AES-GCM-256)와
+`auth_token`을 분리. 서버는 `SHA-256(auth_token)`만 저장하고, 토큰이 맞을 때만 암호문을 내려줍니다.
