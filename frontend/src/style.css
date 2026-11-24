@@ -1,5 +1,11 @@
 /* Industrial Brutalism — Swiss Industrial Print (밝은 모드 하나만 사용)
-   외부 웹 글꼴은 CSP·라이브러리 최소화 규칙 때문에 쓰지 않고 시스템 글꼴로 대체한다. */
+   글꼴: Pretendard(한글) + IBM Plex Mono(영문 라벨·숫자). 둘 다 OFL.
+   외부 CDN이 아니라 우리 서버에서 내려준다 (CSP: font-src는 default-src 'self'를 따름).
+   한글은 글자 범위별로 잘게 나뉘어 있어, 화면에 쓴 글자가 든 조각만 내려받는다. */
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+
 :root {
   color-scheme: light;
   --paper: #f4f4f0;
@@ -8,9 +14,11 @@
   --red: #e61919; /* 유일한 강조색: 오류 표시에만 사용 */
   --rule: 2px solid var(--ink);
 
-  --font-macro: 'Arial Black', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-  --font-mono: 'Cascadia Mono', 'D2Coding', Consolas, 'SF Mono', Menlo, monospace;
-  --font-body: system-ui, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  /* 큰 글자: 영문은 Arial Black, 한글은 Pretendard */
+  --font-macro: 'Arial Black', 'Pretendard Variable', sans-serif;
+  /* 고정폭: 영문·숫자는 Plex Mono, 한글은 Pretendard로 이어진다 */
+  --font-mono: 'IBM Plex Mono', 'Pretendard Variable', monospace;
+  --font-body: 'Pretendard Variable', system-ui, sans-serif;
 
   font-family: var(--font-body);
   color: var(--ink);
@@ -34,9 +42,11 @@ body {
   background: var(--paper);
 }
 
+/* 키보드(Tab) 포커스 테두리는 쓰지 않는다 (사용자 결정: Tab으로 이동하는 사용자는 없다고 가정).
+   브라우저 기본 테두리도 함께 끈다. */
+:focus,
 :focus-visible {
-  outline: 3px solid var(--ink);
-  outline-offset: 2px;
+  outline: none;
 }
 
 /* ── 시트: 2px 실선으로 구획을 나눈 한 장의 문서 ── */
@@ -104,8 +114,8 @@ form {
 .key {
   padding: 14px 16px;
   border-right: 1px solid var(--ink);
-  font: 700 12px/1.3 var(--font-mono);
-  letter-spacing: 0.08em;
+  font: 700 13px/1.3 var(--font-mono);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -149,14 +159,9 @@ input:not([type]) {
   flex: none;
   padding: 8px 12px;
   border: var(--rule);
-  font: 700 12px var(--font-mono);
+  font: 700 13px var(--font-mono);
   letter-spacing: 0.04em;
   cursor: pointer;
-}
-
-#file:focus-visible + .pick {
-  outline: 3px solid var(--ink);
-  outline-offset: 2px;
 }
 
 .file-name {
@@ -165,6 +170,102 @@ input:not([type]) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font: 13px var(--font-mono);
+}
+
+/* ── 출력 설정 (업로드 화면) ── */
+/* 부수: [ − ] 1 [ + ] */
+.stepper {
+  display: grid;
+  grid-template-columns: 44px 72px 44px;
+}
+
+.stepper button {
+  width: 44px;
+  padding: 0;
+  border: var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  font: 700 18px var(--font-mono);
+}
+
+.stepper button::before,
+.stepper button::after {
+  content: none;
+}
+
+.stepper input {
+  border-left: 0 !important;
+  border-right: 0 !important;
+  text-align: center;
+  font: 700 16px var(--font-mono) !important;
+}
+
+/* 하나만 고르는 버튼 묶음: [ 1 ][ 2 ][ 4 ] — 실제로는 라디오 버튼이라 키보드(화살표)로도 고를 수 있다 */
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.seg label {
+  position: relative;
+}
+
+.seg input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.seg span {
+  display: block;
+  min-width: 44px;
+  margin-left: -2px; /* 이웃한 테두리를 한 줄로 겹친다 */
+  padding: 9px 14px;
+  border: var(--rule);
+  text-align: center;
+  font: 700 13px var(--font-mono);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.seg label:first-child span {
+  margin-left: 0;
+}
+
+.seg input:checked + span {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.seg input:disabled + span {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 미리보기 썸네일 격자 */
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  align-items: start;
+  padding: 16px;
+  border-top: 1px solid var(--ink);
+}
+
+.thumbs:empty {
+  min-height: 80px;
+}
+
+.thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ink);
+  background: #fff;
+}
+
+.preview {
+  border-bottom: 1px solid var(--ink);
 }
 
 /* 출력 화면 코드 입력: 숫자 한 개씩 6칸 */
@@ -214,6 +315,44 @@ button:active:not(:disabled) {
 button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 출력 설정 펼치기 줄: 다른 입력 줄과 같은 모양, 오른쪽 끝에 펼치기 화살표 */
+button.toggle {
+  width: 100%;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+button.toggle::before,
+button.toggle::after {
+  content: none;
+}
+
+.toggle-val {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 펼치기 화살표: 테두리 두 변으로 그린 꺾쇠. 접힘 › / 펼침 ⌄ */
+.toggle-mark {
+  width: 9px;
+  height: 9px;
+  margin-right: 4px;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+button.toggle[aria-expanded='true'] .toggle-mark {
+  transform: rotate(45deg);
 }
 
 .secondary {
@@ -271,8 +410,8 @@ button:disabled {
 .result-head {
   margin: 0;
   padding: 14px 16px;
-  font: 700 12px/1.3 var(--font-mono);
-  letter-spacing: 0.08em;
+  font: 700 13px/1.3 var(--font-mono);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -294,8 +433,8 @@ button:disabled {
   margin: 0;
   padding: 12px 16px;
   border-top: 1px solid var(--ink);
-  font: 700 12px/1.3 var(--font-mono);
-  letter-spacing: 0.08em;
+  font: 700 13px/1.3 var(--font-mono);
+  letter-spacing: 0.03em;
 }
 
 #timer {
@@ -412,6 +551,26 @@ button:disabled {
 @media print {
   @page {
     margin: 0;
+  }
+  /* 쪽마다 A4 용지 방향을 인쇄 창에 알려준다: 가로 쪽(모아찍기 등)이 세로 용지에 작게 찍히지 않게.
+     크기는 A4로 고정한다. 100vh는 첫 쪽 용지 기준으로 고정돼, 방향이 섞이면 넘치거나 작아지기 때문이다. */
+  @page sheet-portrait {
+    size: A4 portrait;
+    margin: 0;
+  }
+  @page sheet-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+  .pdf-page.portrait {
+    page: sheet-portrait;
+    width: 210mm !important;
+    height: 297mm !important;
+  }
+  .pdf-page.landscape {
+    page: sheet-landscape;
+    width: 297mm !important;
+    height: 210mm !important;
   }
   body {
     background: none;

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PrintCode — 출력</title>
+    <title>PrintCode — Print</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -20,7 +20,7 @@
 
       <form id="code-form" novalidate>
         <div class="field">
-          <label class="key" for="code-1">01 / CODE</label>
+          <label class="key" for="code-1">01 / 코드</label>
           <div class="val">
             <!-- 6칸으로 나눠 6자리라는 것을 바로 알 수 있게 한다 -->
             <div id="code-digits" class="digits" role="group" aria-label="코드 6자리">
@@ -34,10 +34,10 @@
           </div>
         </div>
         <div id="phrase-row" class="field" hidden>
-          <label class="key" for="phrase">02 / Phrase</label>
+          <label class="key" for="phrase">02 / 확인코드</label>
           <div class="val">
             <!-- type=password는 한글 입력기를 꺼버리므로 일반 텍스트. autocomplete=off로 공용 PC 입력 기록에 남기지 않는다 -->
-            <input id="phrase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="확인코드" />
+            <input id="phrase" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"/>
           </div>
         </div>
         <button type="submit" id="submit">NEXT</button>

@@ -6,23 +6,31 @@
 - 공용 PC에서 코드(+확인코드)를 입력하면 브라우저 메모리에서 복호화해 인쇄 창을 엽니다.
 - 출력 PC가 파일을 받아 가는 순간 서버의 암호문은 삭제되고, 같은 코드로는 다시 출력할 수 없습니다.
 
-> 현재 단계: **M2** (출력 전용 창·WebSocket·자동 정리). 출력 설정(M3), 보안 강화(M4),
-> docx/pptx(M5), hwp(M6)는 아직입니다. 보안 설계와 한계는 [SECURITY.md](SECURITY.md)를 보세요.
+> 현재 단계: **M3** (출력 설정·미리보기). 보안 강화(M4), docx/pptx(M5), hwp(M6)는 아직입니다.
+> 보안 설계와 한계는 [SECURITY.md](SECURITY.md)를 보세요.
 
 ## 사용 흐름
 
-메인(`/`)에서 **UPLOAD** 또는 **PRINT**를 고릅니다.
+메인(`/`)에서 **UPLOAD** 또는 **PRINT**를 고릅니다. 화면은 영어이고, 입력 칸 라벨(`01 / 파일` 등)만 한글입니다. 글꼴은 Pretendard(한글)와 IBM Plex Mono(영문·숫자)이고, 둘 다 OFL이며 서버에서 직접 내려줍니다.
 
-1. 노트북에서 UPLOAD(`/upload/`) → PDF 선택 → (선택) 확인코드 입력 → **UPLOAD**
+1. 노트북에서 UPLOAD(`/upload/`) → PDF 선택 → (선택) 확인코드 → (필요하면) `03 / 출력 설정`을 눌러 펼치고 설정·미리보기 확인 → **UPLOAD**
+   - **쪽 범위**: 비우면 전체, `1-3, 5`, `4-`(끝까지)
+   - **부수**: 1~20부, 한 부씩 묶어서
+   - **모아찍기**: 1 / 2 / 4쪽 모아찍기 (A4 고정. 2쪽은 가로, 4쪽은 세로가 기본. 부마다 새 장에서 시작)
+   - **방향**: 자동(원본) / 세로 / 가로 (방향이 다른 쪽만 90° 회전)
+   - 미리보기는 1부만 보여 주고 `× N COPIES`로 표시합니다.
+   - 미리보기에 보이는 PDF가 그대로 암호화되어 올라갑니다. 기본 설정이면 원본을 그대로 올립니다.
+   - 양면 인쇄는 웹에서 지정할 수 없어 인쇄 창에서 직접 고릅니다.
 2. 화면에 나온 6자리 코드를 기억 (남은 시간이 1초씩 표시됨)
-3. 프린터실 PC에서 PRINT(`/print/`) → 코드 6칸 입력 → **NEXT** → (확인코드) → **PRINT**
+3. 프린터실 PC에서 PRINT(`/print/`) → 코드 6칸 입력 (6자리가 차면 자동으로 확인) → (확인코드) → **PRINT** 한 번
 4. 출력 전용 창이 열려 인쇄 창을 띄웁니다. 인쇄 창이 닫히면 **DONE** / **PRINT AGAIN**을 고릅니다.
    - **DONE**: 문서를 지우고 창이 스스로 닫힙니다.
    - **PRINT AGAIN**: 코드를 다시 입력하지 않고 바로 다시 인쇄합니다 (취소했거나 용지가 걸렸을 때).
    - 팝업이 막혀 있으면 같은 창에서 인쇄합니다.
    - 2분 동안 아무 동작이 없으면 문서와 입력값을 지웁니다.
-5. 업로드 화면의 코드 자리에 상태가 실시간으로 표시됩니다: `PRINTING` → `PRINTED`
-   (DONE 없이 창이 닫히거나 시간이 지나면 `NOT PRINTED`, 5회 실패 시 `DELETED`, 만료 시 `EXPIRED`)
+5. 업로드 화면의 코드 자리에 상태가 실시간으로 표시됩니다: `PRINTING` → `CODE EXPIRED`
+   (출력·창 닫힘·만료 모두 `CODE EXPIRED`. 브라우저가 인쇄와 취소를 구분하지 못해 인쇄 여부는 표시하지 않습니다.
+   확인코드 5회 실패로 지워졌을 때만 빨간 `DELETED`)
 
 | 모드 | 외부인의 코드 추측 | 서버 관리자의 열람 |
 |---|---|---|
@@ -117,7 +125,7 @@ cd frontend; npm test
 ```
 backend/app/   api.py(HTTP 엔드포인트) ws.py(WebSocket) lifecycle.py(상태 알림·정리 작업)
                db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증) config.py
-frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) upload.js print.js(출력 화면)
+frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) layout.js(출력 설정, pdf-lib) upload.js print.js(출력 화면)
                printwindow.js(출력 전용 창) printjob.js(복호화·인쇄·정리) pdfview.js(pdf.js) api.js
 ```
 

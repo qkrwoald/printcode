@@ -11,8 +11,9 @@ const RENDER_SCALE = 2;
 /**
  * pdfBytes를 container 안에 페이지별 캔버스로 그리고, 정리 함수를 돌려준다.
  * pdf.js에 넘긴 버퍼는 워커로 이동(transfer)되므로 사본을 넘기고 원본은 호출한 쪽에서 지운다.
+ * 옵션: scale(배율), maxPages(앞에서부터 몇 쪽만 그릴지, 썸네일용), className
  */
-export async function renderPdf(pdfBytes, container) {
+export async function renderPdf(pdfBytes, container, { scale = RENDER_SCALE, maxPages = Infinity, className = 'pdf-page' } = {}) {
   const task = getDocument({
     data: pdfBytes.slice(),
     // pdf.js v6는 eval 기반 폰트 렌더링(isEvalSupported)을 제거했고, PDF 내부 JavaScript는
@@ -24,13 +25,14 @@ export async function renderPdf(pdfBytes, container) {
   const pdf = await task.promise;
   const canvases = [];
   try {
-    for (let n = 1; n <= pdf.numPages; n++) {
+    for (let n = 1; n <= Math.min(pdf.numPages, maxPages); n++) {
       const page = await pdf.getPage(n);
-      const viewport = page.getViewport({ scale: RENDER_SCALE });
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
-      canvas.className = 'pdf-page';
+      // 쪽 방향 클래스: 인쇄할 때 쪽마다 용지 방향(@page)을 맞추는 데 쓴다 (style.css)
+      canvas.className = `${className} ${viewport.width > viewport.height ? 'landscape' : 'portrait'}`;
       container.append(canvas);
       canvases.push(canvas);
       // intent 'print': 인쇄용 주석 표시를 따르고, requestAnimationFrame 없이 바로 그린다

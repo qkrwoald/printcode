@@ -39,8 +39,6 @@ function openPrintSocket(claimToken) {
   });
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
 /** 인쇄 창이 닫힌 뒤 보여줄 [ DONE ] [ PRINT AGAIN ] 버튼 묶음. 상태 줄 바로 아래에 넣는다. */
 function createConfirmPanel(onDone, onAgain) {
   const panel = document.createElement('div');
@@ -94,7 +92,7 @@ export async function runPrintJob({ blob, encKey, claimToken, container, onStatu
       idleTimer = setTimeout(() => finish('idle'), IDLE_MS);
     };
     const printNow = () => {
-      onStatus(`Opening print dialog… (${plural(view.numPages, 'page')})`);
+      onStatus(`Opening print dialog… (${view.numPages} ${view.numPages === 1 ? 'page' : 'pages'})`);
       window.print();
     };
     const confirm = createConfirmPanel(

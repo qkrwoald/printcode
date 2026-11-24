@@ -33,8 +33,11 @@ function setBusy(on) {
   submitBtn.disabled = on;
 }
 
+let lookupPending = null; // { code, promise } 진행 중인 코드 확인
+
 function resetForm() {
   info = null;
+  lookupPending = null;
   digits.forEach((d) => (d.value = ''));
   phraseInput.value = '';
   phraseRow.hidden = true;
@@ -43,14 +46,58 @@ function resetForm() {
   digits[0].focus();
 }
 
-// 코드를 바꾸면 이전 조회 결과를 버린다.
+// 코드를 바꾸면 이전 조회 결과를 버리고, 6자리가 다 차면 바로 코드를 확인한다.
+// 미리 확인해 두면 버튼을 누르는 순간(기다림 없이) 출력 창을 열 수 있다 — 팝업은 클릭 직후에만 열린다.
 function invalidateLookup() {
-  if (info) {
-    info = null;
-    phraseRow.hidden = true;
-    phraseInput.value = '';
-    submitBtn.textContent = 'NEXT';
+  info = null;
+  lookupPending = null;
+  phraseRow.hidden = true;
+  phraseInput.value = '';
+  submitBtn.textContent = 'NEXT';
+  const code = getCode();
+  if (/^[0-9]{6}$/.test(code)) startLookup(code);
+}
+
+function startLookup(code) {
+  const promise = lookup(code).then((res) => ({ code, ...res }));
+  lookupPending = { code, promise };
+  setStatus('Checking code…');
+  promise.then(
+    (res) => lookupPending?.promise === promise && applyLookup(res),
+    (err) => {
+      if (lookupPending?.promise !== promise) return; // 그새 코드가 바뀜
+      lookupPending = null;
+      // 오타일 수 있으니 입력한 코드는 지우지 않는다
+      setStatus(err.message || 'Could not check code.', true);
+    },
+  );
+}
+
+function applyLookup(res) {
+  info = res;
+  lookupPending = null;
+  submitBtn.textContent = 'PRINT';
+  if (res.has_phrase) {
+    // 확인코드를 빠뜨려 시도 횟수를 낭비하지 않도록 입력칸을 먼저 보여준다.
+    phraseRow.hidden = false;
+    setStatus('Phrase required.');
+    phraseInput.focus();
+  } else {
+    setStatus('Ready. Press PRINT.');
+    submitBtn.focus();
   }
+}
+
+// 출력 전용 창. 반드시 클릭 처리 안에서 await 전에 열어야 팝업 차단에 걸리지 않는다.
+// 창이 '준비됨'을 보내는 시점을 놓치지 않도록, 여는 즉시 기다리기 시작한다.
+function openPrintWindow() {
+  const popup = window.open(WINDOW_URL, 'printcode-print', WINDOW_FEATURES);
+  const ready = popup ? waitForPopup(popup, 'printcode:ready', 15_000) : Promise.resolve(null);
+  return {
+    popup,
+    ready,
+    close: () => popup?.close(),
+  };
 }
 
 // start칸부터 숫자를 차례로 채운다 (붙여넣기용).
@@ -96,35 +143,43 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  // 1단계(NEXT): 코드 확인. 2단계(PRINT): 인증 후 출력.
-  // PRINT를 따로 누르게 하는 이유: 팝업은 클릭 직후(기다림 없이) 열어야 브라우저가 막지 않는다.
-  if (!info) {
+  // 이미 확인된 코드: 확인코드가 필요 없거나 입력했으면 바로 출력 창을 연다.
+  if (info?.code === code) {
+    if (info.has_phrase && !phraseInput.value) {
+      setStatus('Phrase required.', true);
+      phraseInput.focus();
+      return;
+    }
+    const win = openPrintWindow();
     setBusy(true);
     try {
-      setStatus('Checking code…');
-      info = await lookup(code);
-      submitBtn.textContent = 'PRINT';
-      setBusy(false);
-      if (info.has_phrase) {
-        // 확인코드를 빠뜨려 시도 횟수를 낭비하지 않도록 입력칸을 먼저 보여준다.
-        phraseRow.hidden = false;
-        setStatus('Phrase required.');
-        phraseInput.focus();
-      } else {
-        setStatus('Ready. Press PRINT.');
-        submitBtn.focus();
-      }
+      await startPrint(code, info.has_phrase ? phraseInput.value : '', win);
     } catch (err) {
       handleError(err);
-      setBusy(false);
+      if (busy) setBusy(false);
     }
     return;
   }
 
+  // 아직 확인 전에 눌렀다: 클릭한 지금 출력 창부터 열어 두고 확인한다.
+  // 확인코드가 필요한 파일이면 창을 닫고 확인코드 칸을 보여준다.
+  const win = openPrintWindow();
   setBusy(true);
   try {
-    await startPrint(code, info.has_phrase ? phraseInput.value : '');
+    const pending = lookupPending;
+    lookupPending = null; // 자동 확인 쪽 처리와 겹치지 않게 여기서 이어받는다
+    const res =
+      pending?.code === code ? await pending.promise : await lookup(code).then((r) => ({ code, ...r }));
+    if (res.has_phrase) {
+      win.close();
+      setBusy(false);
+      applyLookup(res);
+      return;
+    }
+    info = res;
+    await startPrint(code, '', win);
   } catch (err) {
+    win.close();
     handleError(err);
     if (busy) setBusy(false);
   }
@@ -173,10 +228,8 @@ const RESULT_MESSAGES = {
   closed: 'Print window closed. Document cleared.',
 };
 
-async function startPrint(code, phrase) {
-  // 반드시 await 전에 연다: 클릭 직후가 아니면 팝업 차단에 걸린다.
-  const popup = window.open(WINDOW_URL, 'printcode-print', WINDOW_FEATURES);
-  const popupReady = popup ? waitForPopup(popup, 'printcode:ready', 15_000) : Promise.resolve(null);
+async function startPrint(code, phrase, win) {
+  const { popup, ready: popupReady } = win;
 
   let job;
   try {
