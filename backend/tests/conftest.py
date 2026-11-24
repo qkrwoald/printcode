@@ -7,7 +7,16 @@ os.environ["PRINTCODE_DATA_DIR"] = tempfile.mkdtemp(prefix="printcode-test-")
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import ratelimit, ws  # noqa: E402
 from app.main import app  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fresh_limits():
+    """테스트끼리 IP별 횟수 제한 기록이 섞이지 않게 매번 비운다."""
+    ratelimit.reset_all()
+    ws._open.clear()
+    yield
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from . import config
 
 # 구조가 바뀌면 올린다. 저장된 데이터는 길어야 30분짜리 임시 파일이므로, 버전이 다르면 지우고 새로 만든다.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE files (
@@ -14,6 +14,7 @@ CREATE TABLE files (
     status            TEXT NOT NULL CHECK (status IN ('reserved', 'ready', 'claimed')),
     owner_token_hash  BLOB NOT NULL,     -- 업로더 토큰 해시: 예약자만 업로드하고, 상태 알림을 받게 함
     blob_name         TEXT,              -- 서버가 만든 무작위 파일명 (받아 가면 즉시 삭제 → NULL)
+    blob_size         INTEGER NOT NULL DEFAULT 0,  -- 전체 저장 용량 상한 계산용 (받아 가면 0)
     salt              BLOB,
     auth_hash         BLOB,              -- SHA-256(auth_token). auth_token 자체는 저장하지 않음
     kdf_m             INTEGER,

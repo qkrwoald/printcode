@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -49,27 +50,50 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     # 공용 PC에서 뒤로 가기·캐시로 화면이나 데이터가 복구되지 않도록 저장 금지
     "Cache-Control": "no-store",
+    # 다른 사이트 창과 브라우저 문맥을 공유하지 않는다 (우리가 연 같은 사이트 출력 창은 그대로 연결됨)
+    "Cross-Origin-Opener-Policy": "same-origin",
+    # 우리 파일(스크립트·글꼴·암호문)을 다른 사이트가 끌어다 쓰지 못하게 한다
+    "Cross-Origin-Resource-Policy": "same-origin",
+    # 쓰지 않는 브라우저 기능은 꺼 둔다
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
 }
-# HSTS는 HTTPS에서만 의미가 있으므로 배포 단계(리버스 프록시)에서 붙인다.
+# HSTS: HTTPS로 접속했을 때만 붙인다 (http에서는 의미 없음). 프록시 뒤에서는 X-Forwarded-Proto로 판단.
+HSTS = "max-age=31536000"
+
+
+def _cross_site(request: Request) -> bool:
+    """다른 사이트에서 보낸 요청인지. 쿠키를 쓰지 않아 CSRF로 얻을 것은 거의 없지만,
+    다른 사이트가 사용자 브라우저를 통해 코드를 발급·조회하는 일 자체를 막는다."""
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        return True
+    origin = request.headers.get("origin")
+    return bool(origin) and urlsplit(origin).netloc != request.headers.get("host")
 
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     response = None
-    if (
-        request.method == "POST"
-        and request.url.path == "/api/uploads"
-        and config.MAX_BLOB_BYTES is not None
-    ):
-        # 본문을 읽기 전에 크기를 먼저 확인해 큰 업로드를 일찍 거절한다.
+    path = request.url.path
+    if request.method == "POST" and path.startswith("/api/"):
+        # 본문을 읽기 전에 출처와 크기를 먼저 확인해 일찍 거절한다.
         length = request.headers.get("content-length", "")
-        if not length.isdigit():
+        if path == "/api/uploads":
+            limit = config.MAX_BLOB_BYTES + 16 * 1024 if config.MAX_BLOB_BYTES else None  # 폼 필드 여유분
+        else:
+            limit = config.MAX_JSON_BYTES
+        if _cross_site(request):
+            response = JSONResponse({"detail": "Cross-site request blocked."}, status_code=403)
+        elif length and not length.isdigit():
+            response = JSONResponse({"detail": "Invalid Content-Length."}, status_code=400)
+        elif limit is not None and not length and path == "/api/uploads":
             response = JSONResponse({"detail": "Content-Length required."}, status_code=411)
-        elif int(length) > config.MAX_BLOB_BYTES + 16 * 1024:  # 폼 필드 여유분
+        elif limit is not None and length and int(length) > limit:
             response = JSONResponse({"detail": "File too large."}, status_code=413)
     if response is None:
         response = await call_next(request)
     response.headers.update(SECURITY_HEADERS)
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = HSTS
     return response
 
 

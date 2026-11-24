@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from . import config, db, lifecycle
+from . import config, db, lifecycle, ratelimit
 from .lifecycle import hub
 from .schemas import PrintHello, PrintMessage, UploaderHello, b64u_decode
 
@@ -23,6 +23,29 @@ router = APIRouter()
 # 사용자 정의 종료 코드
 CLOSE_BAD_REQUEST = 4400
 CLOSE_FORBIDDEN = 4403
+
+
+# IP별 동시 연결 수 (이벤트 루프 안에서만 바뀌므로 잠금이 필요 없다)
+_open: dict[str, int] = {}
+
+
+async def _admit(ws: WebSocket) -> str | None:
+    """출처를 확인하고 IP별 동시 연결 수를 넘지 않으면 연결을 받는다. 받으면 IP를 돌려준다."""
+    ip = ratelimit.client_ip(ws)
+    if not _same_origin(ws) or _open.get(ip, 0) >= config.WS_PER_IP:
+        await ws.close(code=CLOSE_FORBIDDEN)  # 수락 전에 닫으면 연결 자체가 거절된다
+        return None
+    _open[ip] = _open.get(ip, 0) + 1
+    await ws.accept()
+    return ip
+
+
+def _release(ip: str) -> None:
+    left = _open.get(ip, 1) - 1
+    if left > 0:
+        _open[ip] = left
+    else:
+        _open.pop(ip, None)
 
 
 def _sha256(b: bytes) -> bytes:
@@ -76,10 +99,16 @@ def _attach_print(claim_hash: bytes):
 
 @router.websocket("/ws/upload")
 async def uploader_socket(ws: WebSocket):
-    if not _same_origin(ws):
-        await ws.close(code=CLOSE_FORBIDDEN)
+    ip = await _admit(ws)
+    if ip is None:
         return
-    await ws.accept()
+    try:
+        await _uploader(ws)
+    finally:
+        _release(ip)
+
+
+async def _uploader(ws: WebSocket):
     hello = await _hello(ws, UploaderHello)
     if hello is None:
         await _close(ws, CLOSE_BAD_REQUEST)
@@ -103,10 +132,16 @@ async def uploader_socket(ws: WebSocket):
 
 @router.websocket("/ws/print")
 async def print_socket(ws: WebSocket):
-    if not _same_origin(ws):
-        await ws.close(code=CLOSE_FORBIDDEN)
+    ip = await _admit(ws)
+    if ip is None:
         return
-    await ws.accept()
+    try:
+        await _printer(ws)
+    finally:
+        _release(ip)
+
+
+async def _printer(ws: WebSocket):
     hello = await _hello(ws, PrintHello)
     if hello is None:
         await _close(ws, CLOSE_BAD_REQUEST)

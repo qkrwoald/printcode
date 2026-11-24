@@ -31,3 +31,17 @@ CLAIM_MAX_SECONDS = int(os.environ.get("PRINTCODE_CLAIM_MAX", 15 * 60))
 SWEEP_INTERVAL = int(os.environ.get("PRINTCODE_SWEEP_INTERVAL", 30))
 # WebSocket 연결 후 첫 메시지(토큰)를 기다리는 시간
 WS_HELLO_TIMEOUT = 10
+
+# ── 남용 방지 (IP별). 학교는 학생 여럿이 공인 IP 하나를 함께 쓸 수 있어 정상 사용은 넉넉하게 둔다 ──
+# (횟수, 초)
+RATE_UPLOAD = (30, 10 * 60)  # 코드 발급 + 업로드
+RATE_LOOKUP = (30, 60)  # 코드 조회 + 수령
+# 없는 코드 조회(=추측 시도)는 엄격하게: 이 횟수를 넘으면 BLOCK 시간 동안 조회 차단
+MISS_LIMIT = (20, 60 * 60)
+MISS_BLOCK_SECONDS = 60 * 60
+WS_PER_IP = 20  # IP당 동시 WebSocket 연결 수
+# 업로드 외 API 본문 최대 크기 (JSON 몇 줄이면 충분)
+MAX_JSON_BYTES = 16 * 1024
+# 서버에 동시에 보관할 암호문 전체 크기(MB). 0이면 제한 없음.
+MAX_TOTAL_MB = int(os.environ.get("PRINTCODE_MAX_TOTAL_MB", 5 * 1024))
+MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024 if MAX_TOTAL_MB > 0 else None

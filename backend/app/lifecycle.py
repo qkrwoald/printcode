@@ -13,7 +13,7 @@ import time
 
 from fastapi import WebSocket
 
-from . import config, db, storage
+from . import config, db, ratelimit, storage
 
 log = logging.getLogger("printcode")
 
@@ -110,6 +110,7 @@ async def sweeper() -> None:
         await asyncio.sleep(config.SWEEP_INTERVAL)
         try:
             await asyncio.to_thread(purge, time.time())
+            ratelimit.prune()  # 오래된 IP 기록 정리 (메모리가 계속 늘지 않게)
         except Exception:
             # 코드·토큰 같은 민감 정보는 남기지 않고 실패 사실만 기록
             log.exception("sweep failed")

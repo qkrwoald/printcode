@@ -10,10 +10,10 @@ import sqlite3
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
-from . import config, db, lifecycle, storage
+from . import config, db, lifecycle, ratelimit, storage
 from .lifecycle import hub
 from .schemas import FetchIn, LookupIn, UploadForm, b64u_decode, b64u_encode
 
@@ -41,7 +41,7 @@ def get_config():
     return {"max_pdf_bytes": config.MAX_PDF_BYTES}
 
 
-@router.post("/codes", status_code=201)
+@router.post("/codes", status_code=201, dependencies=[Depends(ratelimit.limit_upload)])
 def reserve_code():
     """활성 코드와 겹치지 않는 6자리 코드를 예약한다."""
     now = time.time()
@@ -68,7 +68,7 @@ def reserve_code():
     raise HTTPException(503, "Cannot issue a code right now. Try again later.")
 
 
-@router.post("/uploads", status_code=201)
+@router.post("/uploads", status_code=201, dependencies=[Depends(ratelimit.limit_upload)])
 def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
     now = time.time()
     token_hash = _sha256(b64u_decode(form.upload_token))
@@ -93,14 +93,21 @@ def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
         if size < MIN_BLOB_BYTES:
             storage.delete(blob_name)
             raise HTTPException(422, "Invalid file.")
+        if config.MAX_TOTAL_BYTES is not None:
+            # 서버 디스크가 가득 차지 않도록 동시에 보관하는 암호문 전체 크기를 제한한다.
+            used = conn.execute("SELECT COALESCE(SUM(blob_size), 0) FROM files").fetchone()[0]
+            if used + size > config.MAX_TOTAL_BYTES:
+                storage.delete(blob_name)
+                raise HTTPException(507, "Server is full. Try again later.")
 
         try:
             conn.execute(
-                "UPDATE files SET status = 'ready', blob_name = ?, "
+                "UPDATE files SET status = 'ready', blob_name = ?, blob_size = ?, "
                 "salt = ?, auth_hash = ?, kdf_m = ?, kdf_t = ?, kdf_p = ?, has_phrase = ?, "
                 "expires_at = ? WHERE code = ?",
                 (
                     blob_name,
+                    size,
                     b64u_decode(form.salt),
                     b64u_decode(form.auth_hash),
                     form.kdf_m,
@@ -117,12 +124,13 @@ def upload(form: Annotated[UploadForm, Form()], blob: UploadFile):
     return {"expires_in": config.FILE_TTL_SECONDS}
 
 
-@router.post("/lookup")
-def lookup(body: LookupIn):
+@router.post("/lookup", dependencies=[Depends(ratelimit.limit_lookup)])
+def lookup(body: LookupIn, request: Request):
     """키 유도에 필요한 공개값(salt, KDF 파라미터)만 돌려준다. 암호문은 주지 않는다."""
     with db.connect() as conn:
         row = _get_ready(conn, body.code, time.time())
     if row is None:
+        ratelimit.record_miss(request)  # 없는 코드 = 추측 시도일 수 있어 따로 센다
         raise HTTPException(404, NOT_FOUND)
     return {
         "salt": b64u_encode(row["salt"]),
@@ -132,8 +140,8 @@ def lookup(body: LookupIn):
     }
 
 
-@router.post("/fetch")
-def fetch(body: FetchIn):
+@router.post("/fetch", dependencies=[Depends(ratelimit.limit_lookup)])
+def fetch(body: FetchIn, request: Request):
     """auth_token이 맞을 때만 암호문을 내려준다.
     암호문을 먼저 주면 확인코드를 오프라인으로 무한 대입할 수 있으므로, 서버에서 시도 횟수를 제한한다."""
     presented = _sha256(b64u_decode(body.auth_token))
@@ -144,6 +152,7 @@ def fetch(body: FetchIn):
     with db.transaction() as conn:
         row = _get_ready(conn, body.code, now)
         if row is None:
+            ratelimit.record_miss(request)
             raise HTTPException(404, NOT_FOUND)
         blob_name = row["blob_name"]
         if hmac.compare_digest(row["auth_hash"], presented):
@@ -153,7 +162,7 @@ def fetch(body: FetchIn):
             # 기록은 출력 창 WebSocket이 끝날 때까지 남겨 업로더에게 결과를 알리는 데 쓴다.
             claim_token = secrets.token_bytes(32)
             conn.execute(
-                "UPDATE files SET status = 'claimed', blob_name = NULL, claim_token_hash = ?, "
+                "UPDATE files SET status = 'claimed', blob_name = NULL, blob_size = 0, claim_token_hash = ?, "
                 "claimed_at = ?, print_connected = 0 WHERE code = ?",
                 (_sha256(claim_token), now, body.code),
             )
