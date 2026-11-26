@@ -1,0 +1,48 @@
+# PrintCode 서버 (systemd). setup.sh가 /etc/systemd/system/printcode.service로 복사한다.
+[Unit]
+Description=PrintCode
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# 전용 계정으로 실행 (로그인 불가). 코드는 읽기만, 쓰기는 데이터 폴더(/var/lib/printcode)에만.
+User=printcode
+Group=printcode
+EnvironmentFile=/etc/printcode.env
+WorkingDirectory=/opt/printcode
+# 반드시 프로세스 1개: 횟수 제한·추측 차단·WebSocket 알림이 메모리에 있어 여러 개면 서로 공유하지 못한다.
+# --proxy-headers: 같은 서버의 Caddy(127.0.0.1)가 넘긴 접속자 IP·https 여부만 믿는다.
+# --no-access-log: 요청마다 IP를 기록하지 않는다 (오류는 그대로 기록).
+ExecStart=/opt/printcode/.venv/bin/python -m uvicorn --app-dir backend app.main:app \
+  --host 127.0.0.1 --port 8000 --workers 1 \
+  --proxy-headers --forwarded-allow-ips 127.0.0.1 \
+  --no-access-log --no-server-header
+Restart=always
+RestartSec=3
+
+# 데이터 폴더: /var/lib/printcode (printcode 계정 소유, 다른 계정은 접근 불가)
+StateDirectory=printcode
+StateDirectoryMode=0700
+
+# 침해되더라도 피해를 줄이는 제한들
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -211,3 +211,32 @@ def test_converter_csp_relaxed_only_for_converter_scripts(tmp_path):
             assert api.headers["cache-control"] == "no-store"
     finally:
         main.app.router.routes.remove(route)
+
+
+# ── 플랫폼 프록시(Railway 등) 뒤의 접속자 IP ──
+
+def test_forwarded_for_ignored_by_default(client, clock):
+    """PROXY_HOPS=0(기본): 접속자가 X-Forwarded-For를 바꿔 보내도 같은 IP로 센다 (IP 위조로 제한 회피 불가)."""
+    limit, _ = config.RATE_UPLOAD
+    for n in range(limit):
+        assert client.post("/api/codes", headers={"X-Forwarded-For": f"10.0.0.{n}"}).status_code == 201
+    assert client.post("/api/codes", headers={"X-Forwarded-For": "10.9.9.9"}).status_code == 429
+
+
+def test_proxy_hops_uses_rightmost_entry(client, clock, monkeypatch):
+    """PROXY_HOPS=1: 프록시가 덧붙인 맨 끝 값만 접속자 IP로 쓴다. 앞쪽(접속자가 적은 값)을 바꿔도 소용없다."""
+    monkeypatch.setattr(config, "PROXY_HOPS", 1)
+    limit, _ = config.RATE_UPLOAD
+    for n in range(limit):
+        spoofed = {"X-Forwarded-For": f"10.0.0.{n}, 203.0.113.7"}
+        assert client.post("/api/codes", headers=spoofed).status_code == 201
+    assert client.post("/api/codes", headers={"X-Forwarded-For": "1.1.1.1, 203.0.113.7"}).status_code == 429
+    # 프록시가 본 실제 IP가 다르면 다른 사람으로 센다
+    assert client.post("/api/codes", headers={"X-Forwarded-For": "203.0.113.8"}).status_code == 201
+
+
+def test_proxy_hops_hsts_from_forwarded_proto(client, monkeypatch):
+    """프록시가 HTTPS를 처리하고 http로 넘겨줘도, PROXY_HOPS가 켜져 있으면 X-Forwarded-Proto로 HSTS를 붙인다."""
+    assert "strict-transport-security" not in client.get("/api/config", headers={"X-Forwarded-Proto": "https"}).headers
+    monkeypatch.setattr(config, "PROXY_HOPS", 1)
+    assert "strict-transport-security" in client.get("/api/config", headers={"X-Forwarded-Proto": "https"}).headers

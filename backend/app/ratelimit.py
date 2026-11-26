@@ -89,10 +89,26 @@ lookup_limit = Window(*config.RATE_LOOKUP)
 miss_guard = MissGuard(*config.MISS_LIMIT, config.MISS_BLOCK_SECONDS)
 
 
+def forwarded_entry(conn, header: str) -> str | None:
+    """PROXY_HOPS가 켜져 있을 때, 프록시 헤더에서 '오른쪽에서 PROXY_HOPS번째' 값을 꺼낸다.
+
+    왜 오른쪽부터인가: 접속자는 X-Forwarded-For에 아무 값이나 미리 적어 보낼 수 있고,
+    프록시는 자기가 본 실제 접속 IP를 '맨 끝에 덧붙인다'. 그래서 왼쪽 값은 조작될 수 있고,
+    우리가 믿는 프록시 수(hops)만큼 오른쪽에서 센 값만 조작할 수 없다.
+    """
+    hops = config.PROXY_HOPS
+    if hops <= 0:
+        return None
+    parts = [p.strip() for p in conn.headers.get(header, "").split(",") if p.strip()]
+    return parts[-hops] if len(parts) >= hops else None
+
+
 def client_ip(conn) -> str:
-    """접속자 IP. 터널·리버스 프록시 뒤에서는 uvicorn --proxy-headers가
-    신뢰하는 프록시(127.0.0.1)의 X-Forwarded-For 값으로 바꿔 준다."""
-    return conn.client.host if conn.client else "unknown"
+    """접속자 IP.
+    - 같은 서버의 프록시(Caddy·터널) 뒤: uvicorn --proxy-headers가 127.0.0.1에서 온 값만 믿고 바꿔 준다.
+    - 주소가 바뀌는 플랫폼 프록시(Railway 등) 뒤: PRINTCODE_PROXY_HOPS로 믿을 프록시 수를 정한다.
+    """
+    return forwarded_entry(conn, "x-forwarded-for") or (conn.client.host if conn.client else "unknown")
 
 
 def _too_many(seconds: int) -> HTTPException:

@@ -40,6 +40,10 @@ RATE_LOOKUP = (30, 60)  # 코드 조회 + 수령
 MISS_LIMIT = (20, 60 * 60)
 MISS_BLOCK_SECONDS = 60 * 60
 WS_PER_IP = 20  # IP당 동시 WebSocket 연결 수
+# 앞단 프록시 수: 주소가 고정되지 않은 플랫폼 프록시(Railway 등) 뒤에서만 1 이상으로 둔다.
+# 그러면 X-Forwarded-For의 오른쪽에서 이 수만큼 센 값을 접속자 IP로 쓴다 (ratelimit.client_ip).
+# 프록시 없이 직접 공개된 서버에서 켜면 누구나 IP를 속일 수 있으니 0으로 둘 것 (기본값).
+PROXY_HOPS = int(os.environ.get("PRINTCODE_PROXY_HOPS", 0))
 # 업로드 외 API 본문 최대 크기 (JSON 몇 줄이면 충분)
 MAX_JSON_BYTES = 16 * 1024
 # 서버에 동시에 보관할 암호문 전체 크기(MB). 0이면 제한 없음.

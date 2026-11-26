@@ -93,9 +93,101 @@ winget install --id Cloudflare.cloudflared
 주소는 실행할 때마다 바뀝니다. cloudflared의 자세한 로그는 `%TEMP%\printcode-tunnel.log`에 남습니다.
 
 - 노트북이 켜져 있고 스크립트가 실행 중일 때만 접속됩니다.
-- 요청 횟수 제한(M4) 전이므로 **시험할 때만 켜고 주소를 공개하지 마세요.**
+- 정식 운영용이 아닙니다. **시험할 때만 켜고 주소를 공개하지 마세요.**
 - HTTPS는 Cloudflare에서 끝나므로 Cloudflare는 코드·인증 토큰 같은 요청 내용을 볼 수 있습니다.
   파일은 브라우저에서 암호화된 상태라 내용은 볼 수 없습니다.
+
+## Railway에 배포하기 (지금 쓰는 방법)
+
+저장소: https://github.com/qkrwoald/printcode — push하면 Railway가 `Dockerfile`로 빌드해 자동으로 다시 띄웁니다.
+HTTPS 주소(`xxx.up.railway.app`)는 Railway가 붙여 줍니다.
+
+### 처음 한 번 (Railway 화면에서)
+
+1. [railway.com](https://railway.com)에 GitHub 계정으로 로그인 → New Project → **Deploy from GitHub repo** → `printcode`
+2. 서비스에 **Volume** 추가, Mount path `/data` (암호문·DB 저장). 볼륨 크기를 확인해 둡니다.
+3. 서비스 **Variables**:
+
+   | 이름 | 값 | 설명 |
+   |---|---|---|
+   | `PRINTCODE_PROXY_HOPS` | `1` | Railway 프록시가 붙인 접속자 IP를 씀 (아래 주의) |
+   | `PRINTCODE_MAX_PDF_MB` | `0` | 파일 크기 제한 없음 |
+   | `PRINTCODE_MAX_TOTAL_MB` | 볼륨 크기의 80% 정도 | 예: 볼륨 500MB → `400` |
+
+   `PRINTCODE_DATA_DIR=/data`는 `Dockerfile`에 이미 들어 있습니다.
+4. Settings → Networking → **Generate Domain**
+5. 접속해서 메인 화면이 뜨면 아래 "배포 후 점검"을 합니다.
+
+- 인스턴스는 반드시 **1개**로 둡니다(횟수 제한·WebSocket 알림이 메모리에 있음). `railway.json`에 빌드·상태 확인 설정이 있습니다.
+- 다시 배포하면 열려 있던 인쇄·대기 화면 연결이 끊깁니다. 올라와 있는 암호문·코드는 볼륨에 남습니다.
+- **`PRINTCODE_PROXY_HOPS` 주의:** 이 값은 "앞에 믿을 프록시가 몇 개인지"입니다. 틀리면 모든 사람이 한 IP로 묶이거나
+  (값이 너무 큼) 접속자가 IP를 속여 횟수 제한을 피할 수 있습니다(프록시 없는 서버에서 켬). Railway에서는 `1`로 시작하고,
+  배포 후 점검에서 실제 동작을 확인합니다. Oracle·VPS처럼 같은 서버의 Caddy 뒤에서는 `0`(기본)입니다.
+- 체험(30일·5달러)이 끝나면 Hobby 요금제로 올리거나, 아래 Oracle 방법으로 옮깁니다.
+
+## Oracle Cloud에 배포하기 (무료 서버, 대안)
+
+구성: `인터넷 ─HTTPS→ Caddy(인증서 자동) → uvicorn 1개(127.0.0.1:8000) → SQLite + 암호문 폴더`
+서버는 변환하지 않고 암호문만 보관하므로 무료 서버(ARM 1코어·6GB)로 충분합니다.
+
+### 1. Oracle 화면에서 (처음 한 번)
+
+1. [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/) 가입. **홈 리전은 바꿀 수 없습니다**(한국이 없으면 도쿄·오사카).
+   가입 후 **Pay As You Go**로 올려 두면 무료 범위는 그대로이고, 사용량이 적은 무료 서버를 회수하는 정책을 피할 수 있습니다.
+2. 노트북에서 SSH 키 만들기 (PowerShell):
+   ```powershell
+   ssh-keygen -t ed25519 -f $HOME\.ssh\printcode
+   ```
+   ```powershell
+   Get-Content $HOME\.ssh\printcode.pub
+   ```
+   출력된 한 줄(공개키)을 다음 단계에서 붙여 넣습니다. `printcode`(비밀키) 파일은 절대 공유하지 마세요.
+3. Compute → Instances → Create: 이미지 **Ubuntu 24.04**, Shape **VM.Standard.A1.Flex**(1 OCPU / 6GB),
+   부트 디스크 50GB, SSH 키는 2의 공개키. "Out of capacity"면 다른 Availability Domain이나 나중에 다시 시도.
+4. 인스턴스의 공인 IP를 **Reserved Public IP**로 바꾸기 (재시작해도 주소 유지).
+5. 인스턴스의 VCN → Security List → Ingress Rules에 **TCP 80, 443** (Source `0.0.0.0/0`) 추가.
+6. [DuckDNS](https://www.duckdns.org)에서 이름(예: `printcode-xx`)을 만들고 4의 IP를 입력 → 주소 `printcode-xx.duckdns.org`.
+
+### 2. 서버에 설치 (처음 한 번)
+
+```powershell
+ssh -i $HOME\.ssh\printcode ubuntu@<서버 IP>
+```
+
+서버에 접속한 뒤 (`<저장소 주소>`, `<주소>`를 바꿔서):
+
+```bash
+sudo apt-get update && sudo apt-get install -y git
+sudo git clone <저장소 주소> /opt/printcode
+sudo chown -R "$USER": /opt/printcode
+sudo bash /opt/printcode/deploy/setup.sh <주소>
+```
+
+`deploy/setup.sh`가 하는 일: Caddy·Node 22·Python 설치 → 서버 안 방화벽(iptables) 80·443 열기
+(Oracle 우분투는 VCN 규칙과 별개로 막혀 있음) → 전용 계정 `printcode` → 가상환경·프론트 빌드 →
+`/etc/printcode.env`, systemd 서비스, `/etc/caddy/Caddyfile` 설치 → 시작. 끝나면 `https://<주소>`로 접속합니다.
+
+- 설정 바꾸기: `sudo nano /etc/printcode.env` → `sudo systemctl restart printcode` (항목은 `deploy/printcode.env.example`)
+- 기본값: 파일 크기 제한 없음(`MAX_PDF_MB=0`), 전체 보관 20GB(`MAX_TOTAL_MB=20480`)
+- 로그 보기: `journalctl -u printcode -n 50` (접속 기록은 남기지 않고 오류만 남습니다)
+
+### 3. 업데이트
+
+노트북에서 GitHub에 push한 뒤, 서버에서:
+
+```bash
+bash /opt/printcode/deploy/update.sh
+```
+
+재시작하는 동안 열려 있던 인쇄·대기 화면의 연결이 끊기므로 사용자가 없을 때 하세요.
+올라와 있는 암호문·코드는 그대로 남습니다. `deploy/Caddyfile`을 바꿨다면 `setup.sh`를 다시 실행하세요.
+
+### 4. 배포 후 점검
+
+- `https://<주소>`가 열리고 `http://`는 `https://`로 넘어가는지
+- 응답 헤더에 `Strict-Transport-Security`, `Content-Security-Policy`, `Cross-Origin-Embedder-Policy`가 있는지
+- 노트북에서 PDF·docx·hwp 업로드 → **프린터실 PC**에서 코드로 출력 (학교 필터가 주소를 막으면 허용 요청)
+- 업로드 화면의 상태가 `PRINTING` → `CODE EXPIRED`로 바뀌는지 (WebSocket)
 
 ## 테스트
 
@@ -116,6 +208,7 @@ cd frontend; npm test
 | `PRINTCODE_RESERVE_TTL` | `300` | 코드 예약 후 업로드까지 허용 시간(초) |
 | `PRINTCODE_MAX_PDF_MB` | `90` | PDF 최대 크기(MB). `0`이면 제한 없음. 업로드 화면도 이 값을 따름 |
 | `PRINTCODE_MAX_TOTAL_MB` | `5120` | 서버에 동시에 보관하는 암호문 전체 크기(MB). `0`이면 제한 없음 |
+| `PRINTCODE_PROXY_HOPS` | `0` | 앞단 프록시 수. Railway처럼 주소가 바뀌는 플랫폼 프록시 뒤에서만 `1`. 프록시 없이 공개된 서버에서 켜면 IP 위조 가능 |
 
 > 기본 90MB는 Cloudflare 임시 터널의 요청 크기 제한(100MB) 때문입니다.
 > 직접 운영하는 서버에서는 `0`(제한 없음)으로 둘 수 있지만, 그러면 누구나 서버 디스크를 채울 수 있으므로
@@ -151,6 +244,8 @@ backend/app/   api.py(HTTP 엔드포인트) ws.py(WebSocket) lifecycle.py(상태
                db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증) config.py
 frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) layout.js(출력 설정, pdf-lib) convert.js(docx·pptx 변환) hwp.js(hwp·hwpx 변환) upload.js print.js(출력 화면)
                printwindow.js(출력 전용 창) printjob.js(복호화·인쇄·정리) pdfview.js(pdf.js) api.js
+Dockerfile railway.json  Railway(컨테이너) 배포
+deploy/        setup.sh(서버 처음 설치) update.sh(업데이트) Caddyfile printcode.service printcode.env.example
 ```
 
 암호화 설계: `master = Argon2id(code|phrase, salt)` → HKDF로 `enc_key`(AES-GCM-256)와

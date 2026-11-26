@@ -78,7 +78,7 @@ body {
 
 .strip span:nth-child(3) {
   text-align: right;
-  text-transform: none; /* 버전 표기 v0.1 그대로 */
+  text-transform: none; /* 버전 표기 v1.0 그대로 */
 }
 
 .hazard {
@@ -568,6 +568,11 @@ button.toggle[aria-expanded='true'] .toggle-mark {
 
 .strip a::before {
   content: '< ';
+}
+
+/* 메인 화면의 오픈소스 고지 링크: 뒤로 가기 표시(<) 없이 */
+.strip a.licenses::before {
+  content: none;
 }
 
 /* ── 메인 페이지: UPLOAD / PRINT 두 칸 ── */

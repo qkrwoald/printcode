@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, lifecycle, ws
+from . import config, db, lifecycle, ratelimit, ws
 from .api import router
 
 
@@ -119,7 +119,7 @@ async def security_middleware(request: Request, call_next):
         response.headers["Cache-Control"] = IMMUTABLE_CACHE
     if path.startswith("/converter/") and path.endswith(".js"):
         response.headers["Content-Security-Policy"] = CONVERTER_CSP
-    if request.url.scheme == "https":
+    if request.url.scheme == "https" or ratelimit.forwarded_entry(request, "x-forwarded-proto") == "https":
         response.headers["Strict-Transport-Security"] = HSTS
     return response
 

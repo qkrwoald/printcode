@@ -37,3 +37,9 @@ console.log(`hwp converter → dist/converter/rhwp-${rhwpVersion}-${rev}/`);
 for (const f of readdirSync(`${root}dist/assets/`)) {
   if (/^rhwp_bg-.*\.wasm$/.test(f)) rmSync(`${root}dist/assets/${f}`);
 }
+
+// 오픈소스 고지: 브라우저로 내려보내는 패키지의 라이선스 원문을 dist/licenses/에 함께 둔다 (public/licenses.txt에서 안내)
+cpSync(`${rhwpDir}notices/`, `${root}dist/licenses/rhwp/`, { recursive: true });
+cpSync(`${rhwpDir}LICENSE`, `${root}dist/licenses/rhwp/LICENSE`);
+cpSync(`${root}node_modules/@fontsource/ibm-plex-mono/LICENSE`, `${root}dist/licenses/ibm-plex-mono-LICENSE`);
+console.log('licenses → dist/licenses/');

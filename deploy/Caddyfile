@@ -1,0 +1,27 @@
+# PrintCode — Caddy 설정 (HTTPS 자동 발급·갱신 + uvicorn으로 전달)
+# setup.sh가 PRINTCODE_DOMAIN 자리를 실제 주소(예: printcode-xx.duckdns.org)로 바꿔 /etc/caddy/Caddyfile에 넣는다.
+#
+# - 접속 기록(access log)은 남기지 않는다: 접속자 IP와 요청 시각을 쌓아 두지 않기 위해서.
+#   (오류는 Caddy·uvicorn의 시스템 로그에만 남고, 앱은 코드·토큰·파일 내용을 로그에 쓰지 않는다)
+# - 보안 헤더(CSP·HSTS 등)는 앱(main.py)이 붙인다. 여기서는 서버 이름 헤더만 지운다.
+PRINTCODE_DOMAIN {
+	# 페이지·스크립트·변환기 파일(wasm 등)을 압축해 보낸다 (rhwp wasm 28MB → 약 11MB).
+	# /api/는 압축하지 않는다: 암호문은 압축해도 줄지 않아 CPU만 쓴다.
+	@static not path /api/*
+	encode @static zstd gzip {
+		match {
+			header Content-Type text/*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type application/wasm*
+			header Content-Type application/octet-stream*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	header -Server
+
+	# WebSocket(/ws/…)도 그대로 전달된다. X-Forwarded-For·Proto는 Caddy가 실제 값으로 덮어쓴다
+	# (uvicorn은 127.0.0.1에서 온 이 값만 믿는다 → 접속자가 IP를 속여 횟수 제한을 피할 수 없음).
+	reverse_proxy 127.0.0.1:8000
+}
