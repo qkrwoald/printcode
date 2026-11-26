@@ -1,6 +1,7 @@
 // 업로드 화면 (내 노트북). 사용자 입력은 textContent로만 화면에 넣는다 (XSS 방지).
 import { getConfig, reserveCode, uploadBlob, wsUrl } from './api.js';
 import { b64uEncode, normalizePhrase, sealFile } from './crypto.js';
+import { convertToPdf, officeKind, prefetchConverter } from './convert.js';
 import { buildPrintPdf, isDefaultSettings, MAX_COPIES } from './layout.js';
 import { renderPdf } from './pdfview.js';
 
@@ -33,6 +34,10 @@ let preview = null; // 썸네일 정리 함수
 let previewJob = Promise.resolve();
 let previewSeq = 0;
 let previewTimer;
+let fileSeq = 0;
+let reading = false; // 파일을 읽거나 docx·pptx를 변환하는 중
+let previewPdf = null; // 미리보기로 그린 PDF (썸네일을 눌러 크게 볼 때 다시 그림)
+let sourceNote = ''; // 변환 안내 (예: 글꼴이 바뀌었을 수 있음)
 
 function readSettings() {
   const copies = Number($('copies').value);
@@ -50,9 +55,64 @@ function readSettings() {
 async function clearPreview() {
   const p = preview;
   preview = null;
+  previewPdf = null;
+  closeZoom();
   await p?.cleanup();
   $('thumbs').replaceChildren();
 }
+
+// ── 썸네일을 누르면 그 장을 크게 본다 (글꼴이 바뀐 곳 등을 확인하기 위해). 아무 곳이나 누르거나 Esc로 닫는다 ──
+// 한 장이 화면 높이에 맞게 보이고(CSS), ‹ › 버튼·화살표 키로 이전·다음 장을 넘긴다.
+let zoomView = null;
+let zoomPage = 0;
+let zoomSeq = 0;
+const zoomTotal = () => preview?.numPages ?? 0;
+
+async function openZoom(pageNumber) {
+  if (!previewPdf || pageNumber < 1 || pageNumber > zoomTotal()) return;
+  const seq = ++zoomSeq;
+  zoomPage = pageNumber;
+  $('zoom').hidden = false;
+  $('zoom-count').textContent = `${pageNumber} / ${zoomTotal()}`;
+  $('zoom-prev').disabled = pageNumber <= 1;
+  $('zoom-next').disabled = pageNumber >= zoomTotal();
+  // 새 장을 다 그린 뒤 이전 장을 지운다 (넘길 때 깜빡이지 않게). 선명하도록 화면 배율도 반영
+  const box = document.createElement('div');
+  const view = await renderPdf(previewPdf, box, {
+    scale: 2 * (window.devicePixelRatio || 1),
+    pages: [pageNumber],
+    className: 'zoom-canvas',
+  });
+  if (seq !== zoomSeq || $('zoom').hidden) return view.cleanup(); // 그사이 넘기거나 닫힘
+  const old = zoomView;
+  zoomView = view;
+  $('zoom-page').replaceChildren(...box.childNodes);
+  old?.cleanup();
+}
+function closeZoom() {
+  zoomSeq++;
+  $('zoom').hidden = true;
+  zoomView?.cleanup();
+  zoomView = null;
+  $('zoom-page').replaceChildren();
+}
+$('thumbs').addEventListener('click', (e) => {
+  const thumbs = [...$('thumbs').querySelectorAll('canvas')];
+  const i = thumbs.indexOf(e.target);
+  if (i >= 0) openZoom(i + 1);
+});
+$('zoom-prev').addEventListener('click', () => openZoom(zoomPage - 1));
+$('zoom-next').addEventListener('click', () => openZoom(zoomPage + 1));
+// 바탕(문서 밖)을 누르면 닫힌다. 문서·버튼을 누를 때는 닫지 않는다.
+$('zoom').addEventListener('click', (e) => {
+  if (e.target === $('zoom') || e.target === $('zoom-page')) closeZoom();
+});
+document.addEventListener('keydown', (e) => {
+  if ($('zoom').hidden) return;
+  if (e.key === 'Escape') closeZoom();
+  else if (e.key === 'ArrowRight' || e.key === 'PageDown') openZoom(zoomPage + 1);
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') openZoom(zoomPage - 1);
+});
 
 // 설정을 적용한 PDF를 만들고 썸네일을 그린다. 늦게 끝난 이전 작업은 버린다(seq 비교).
 async function refreshPreview() {
@@ -83,11 +143,12 @@ async function refreshPreview() {
       return;
     }
     preview = view;
+    previewPdf = previewBytes;
     prepared = { bytes, pages: view.numPages * settings.copies, settings };
     const more = view.numPages > PREVIEW_MAX ? ` · FIRST ${PREVIEW_MAX} SHOWN` : '';
     const copies = settings.copies > 1 ? ` × ${settings.copies} COPIES` : '';
     $('preview-head').textContent = `PREVIEW · ${view.numPages} ${view.numPages === 1 ? 'SHEET' : 'SHEETS'}${copies}${more}`;
-    setStatus('');
+    setStatus(sourceNote);
   } catch (err) {
     if (seq !== previewSeq) return;
     await clearPreview();
@@ -112,27 +173,50 @@ fileInput.addEventListener('change', async () => {
   source = null;
   prepared = null;
   await clearPreview();
-  $('settings').hidden = !file;
+  $('preview-head').textContent = 'PREVIEW';
+  $('settings').hidden = true;
+  sourceNote = '';
+  fontAnswer?.(false); // 묻는 도중 다른 파일을 고르면 이전 질문은 '아니오'로 끝낸다
+  const seq = ++fileSeq; // 변환 중 다른 파일을 고르면 이전 결과는 버린다
+  const isCurrent = () => seq === fileSeq;
+  setReading(false);
   if (!file) return;
+  setReading(true);
   try {
-    source = { bytes: await readPdf(file), name: file.name, size: file.size };
+    const { bytes, substituted } = await readSource(file, isCurrent);
+    if (!isCurrent()) return bytes.fill(0);
+    source = { bytes, name: file.name, size: file.size };
+    $('settings').hidden = false;
+    if (substituted) {
+      // 문서의 글꼴 일부를 찾지 못해 대체 글꼴로 바뀌었을 수 있다 → 미리보기를 펼쳐 확인하게 한다
+      sourceNote = 'Some fonts were replaced. Check the preview.';
+      openSettings(true);
+    }
     schedulePreview(0);
   } catch (err) {
-    $('settings').hidden = true;
-    setStatus(err.message, true);
+    if (!isCurrent()) return;
+    setStatus(err.message || 'Cannot read this file.', true);
+  } finally {
+    if (isCurrent()) setReading(false);
   }
 });
+
+// 읽기·변환 중에는 UPLOAD를 막는다 (아직 올릴 PDF가 없으므로)
+function setReading(on) {
+  reading = on;
+  form.querySelector('button[type="submit"]').disabled = on;
+}
 
 // 설정을 바꾸면 잠시 뒤(입력이 멈추면) 미리보기를 다시 그린다.
 $('settings-body').addEventListener('input', () => schedulePreview(300));
 $('settings-body').addEventListener('change', () => schedulePreview(300));
 
 // 출력 설정은 접혀 있다가 누르면 펼쳐진다.
-$('settings-toggle').addEventListener('click', () => {
-  const open = $('settings-body').hidden;
+function openSettings(open) {
   $('settings-body').hidden = !open;
   $('settings-toggle').setAttribute('aria-expanded', String(open)); // 화살표 방향은 CSS가 이 값을 보고 바꾼다
-});
+}
+$('settings-toggle').addEventListener('click', () => openSettings($('settings-body').hidden));
 
 function stepCopies(delta) {
   const now = Number($('copies').value);
@@ -143,6 +227,8 @@ function stepCopies(delta) {
 $('copies-down').addEventListener('click', () => stepCopies(-1));
 $('copies-up').addEventListener('click', () => stepCopies(1));
 
+prefetchConverter(); // docx·pptx 변환을 빠르게: 화면을 열면 변환기를 미리 받아 둔다
+
 getConfig()
   .then((cfg) => {
     maxPdfBytes = cfg.max_pdf_bytes;
@@ -151,16 +237,51 @@ getConfig()
     /* 서버가 업로드 때 다시 검사하므로 여기서 실패해도 진행 가능 */
   });
 
-async function readPdf(file) {
-  if (!file) throw new Error('Select a PDF file.');
-  if (maxPdfBytes && file.size > maxPdfBytes) {
+// 내 컴퓨터 글꼴을 써도 되는지 묻는다. 누른 버튼의 클릭으로 바로 권한 창이 뜬다.
+let fontAnswer = null; // 대답을 기다리는 중이면 그 resolve 함수
+function askFontPermission() {
+  setStatus('Use the fonts on this computer for an accurate layout?');
+  $('font-ask').hidden = false;
+  $('font-yes').focus();
+  return new Promise((resolve) => {
+    fontAnswer = (yes) => {
+      fontAnswer = null;
+      $('font-ask').hidden = true;
+      resolve(yes);
+    };
+  });
+}
+$('font-yes').addEventListener('click', () => fontAnswer?.(true));
+$('font-no').addEventListener('click', () => fontAnswer?.(false));
+
+function checkSize(size) {
+  if (maxPdfBytes && size > maxPdfBytes) {
     throw new Error(`File too large (max ${toMB(maxPdfBytes)} MB).`);
   }
+}
+
+/** 고른 파일을 PDF 바이트로 만든다. docx·pptx는 브라우저 안에서 변환한다. 반환: { bytes, substituted } */
+async function readSource(file, isCurrent) {
+  checkSize(file.size);
   const bytes = new Uint8Array(await file.arrayBuffer());
+  const head = new TextDecoder().decode(bytes.subarray(0, 5));
+  if (officeKind(file.name)) {
+    // 확장자만 믿지 않고 zip 시그니처(PK)를 확인한다.
+    if (!head.startsWith('PK')) throw new Error('Not a valid Office file.');
+    try {
+      const { pdfBytes, substituted } = await convertToPdf(bytes, file.name, {
+        onStatus: (s) => isCurrent() && setStatus(s),
+        askFontPermission,
+      });
+      checkSize(pdfBytes.length);
+      return { bytes: pdfBytes, substituted };
+    } finally {
+      bytes.fill(0); // 원본 문서 사본은 변환 후 바로 지운다
+    }
+  }
   // 확장자만 믿지 않고 PDF 시그니처를 확인한다.
-  const sig = new TextDecoder().decode(bytes.subarray(0, 5));
-  if (sig !== '%PDF-') throw new Error('Not a PDF file.');
-  return bytes;
+  if (head !== '%PDF-') throw new Error('Not a PDF file.');
+  return { bytes, substituted: false };
 }
 
 form.addEventListener('submit', async (e) => {
@@ -168,8 +289,12 @@ form.addEventListener('submit', async (e) => {
   // 확인코드는 길이 제한 없음 (비우면 사용 안 함). 짧을수록 서버 관리자의 오프라인 대입에 약하다.
   const phrase = normalizePhrase(phraseInput.value);
 
+  if (reading) {
+    setStatus('Wait until the file is ready.');
+    return;
+  }
   if (!source) {
-    setStatus('Select a PDF file.', true);
+    setStatus('Select a file.', true);
     return;
   }
   setFormDisabled(true);

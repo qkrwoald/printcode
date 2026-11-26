@@ -262,6 +262,100 @@ input:not([type]) {
   height: auto;
   border: 1px solid var(--ink);
   background: #fff;
+  cursor: zoom-in;
+}
+
+/* 미리보기 크게 보기: 어두운 바탕 위에 한 장을 화면 높이에 맞춰 통째로 보여 준다.
+   바탕을 누르면 닫히고, 양옆 꺾쇠 버튼(또는 ← →)으로 장을 넘긴다. */
+.zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 64px 1fr 64px;
+  grid-template-rows: 40px 1fr;
+  align-items: center;
+  padding: 8px 8px 16px;
+  background: rgba(17, 17, 17, 0.85);
+  cursor: zoom-out;
+}
+
+.zoom-count {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+  color: var(--paper);
+  font: 700 13px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.zoom-page {
+  grid-row: 2;
+  grid-column: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 0;
+}
+
+.zoom-canvas {
+  display: block;
+  /* A4 세로가 화면 높이에 맞게: 높이 기준으로 줄이고, 화면이 좁으면 폭에 맞춘다 */
+  width: auto;
+  height: auto;
+  max-height: calc(100vh - 72px);
+  max-width: 100%;
+  border: var(--rule);
+  background: #fff;
+  cursor: default;
+}
+
+/* 이전·다음 장 버튼: 테두리 두 변으로 그린 꺾쇠 (출력 설정 화살표와 같은 모양) */
+button.zoom-nav {
+  grid-row: 2;
+  width: 48px;
+  height: 48px;
+  justify-self: center;
+  padding: 0;
+  border: 2px solid var(--paper);
+  background: none;
+  cursor: pointer;
+}
+
+button.zoom-nav::before {
+  content: '';
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0 auto;
+  border-right: 2px solid var(--paper);
+  border-bottom: 2px solid var(--paper);
+}
+
+button.zoom-nav::after {
+  content: none;
+}
+
+.zoom-prev {
+  grid-column: 1;
+}
+
+.zoom-prev::before {
+  transform: translateX(2px) rotate(135deg);
+}
+
+.zoom-next {
+  grid-column: 3;
+}
+
+.zoom-next::before {
+  transform: translateX(-2px) rotate(-45deg);
+}
+
+button.zoom-nav:disabled {
+  opacity: 0.25;
+  cursor: default;
 }
 
 .preview {

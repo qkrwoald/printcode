@@ -13,7 +13,11 @@ const RENDER_SCALE = 2;
  * pdf.js에 넘긴 버퍼는 워커로 이동(transfer)되므로 사본을 넘기고 원본은 호출한 쪽에서 지운다.
  * 옵션: scale(배율), maxPages(앞에서부터 몇 쪽만 그릴지, 썸네일용), className
  */
-export async function renderPdf(pdfBytes, container, { scale = RENDER_SCALE, maxPages = Infinity, className = 'pdf-page' } = {}) {
+export async function renderPdf(
+  pdfBytes,
+  container,
+  { scale = RENDER_SCALE, maxPages = Infinity, pages = null, className = 'pdf-page' } = {},
+) {
   const task = getDocument({
     data: pdfBytes.slice(),
     // pdf.js v6는 eval 기반 폰트 렌더링(isEvalSupported)을 제거했고, PDF 내부 JavaScript는
@@ -25,7 +29,9 @@ export async function renderPdf(pdfBytes, container, { scale = RENDER_SCALE, max
   const pdf = await task.promise;
   const canvases = [];
   try {
-    for (let n = 1; n <= Math.min(pdf.numPages, maxPages); n++) {
+    // pages: 특정 쪽만 그릴 때 (예: 크게 보기). 없으면 앞에서부터 maxPages장까지
+    const list = pages ?? Array.from({ length: Math.min(pdf.numPages, maxPages) }, (_, i) => i + 1);
+    for (const n of list.filter((p) => p >= 1 && p <= pdf.numPages)) {
       const page = await pdf.getPage(n);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');

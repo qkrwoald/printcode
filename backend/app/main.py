@@ -52,13 +52,36 @@ SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     # 다른 사이트 창과 브라우저 문맥을 공유하지 않는다 (우리가 연 같은 사이트 출력 창은 그대로 연결됨)
     "Cross-Origin-Opener-Policy": "same-origin",
+    # COOP와 함께 '교차 출처 격리'를 켠다: 문서 변환기(LibreOffice WASM)가 SharedArrayBuffer를 쓰려면 필요.
+    # 우리 리소스는 모두 같은 사이트라 영향이 없고, 다른 사이트 리소스는 원래도 쓰지 않는다.
+    "Cross-Origin-Embedder-Policy": "require-corp",
     # 우리 파일(스크립트·글꼴·암호문)을 다른 사이트가 끌어다 쓰지 못하게 한다
     "Cross-Origin-Resource-Policy": "same-origin",
-    # 쓰지 않는 브라우저 기능은 꺼 둔다
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    # 쓰지 않는 브라우저 기능은 꺼 둔다. 로컬 글꼴 접근(문서 변환용)은 우리 사이트에만 허용.
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), local-fonts=(self)",
 }
 # HSTS: HTTPS로 접속했을 때만 붙인다 (http에서는 의미 없음). 프록시 뒤에서는 X-Forwarded-Proto로 판단.
 HSTS = "max-age=31536000"
+# 내용이 바뀌면 이름(해시·버전)도 바뀌는 정적 파일은 오래 캐시해도 안전하다.
+# 특히 문서 변환기(약 240MB)는 매번 받지 않도록 캐시한다. 사용자 데이터가 없는 파일만 해당.
+IMMUTABLE_PREFIXES = ("/assets/", "/converter/")
+IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
+
+# 문서 변환기(LibreOffice WASM) 워커 전용 CSP. 변환기 내부(embind)가 실행 중에 함수를 문자열로 만들어
+# 실행(new Function)하므로 'unsafe-eval'이 필요하다. 워커는 자기 스크립트 응답의 CSP를 따르므로,
+# 이 완화는 /converter/ 아래 워커에만 적용되고 화면(페이지)의 CSP는 그대로 엄격하다.
+# 워커는 화면(DOM)·쿠키에 접근할 수 없고, 다루는 것은 사용자가 고른 문서뿐이다.
+CONVERTER_CSP = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'",
+        "worker-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+    ]
+)
 
 
 def _cross_site(request: Request) -> bool:
@@ -92,6 +115,10 @@ async def security_middleware(request: Request, call_next):
     if response is None:
         response = await call_next(request)
     response.headers.update(SECURITY_HEADERS)
+    if request.method == "GET" and path.startswith(IMMUTABLE_PREFIXES) and response.status_code == 200:
+        response.headers["Cache-Control"] = IMMUTABLE_CACHE
+    if path.startswith("/converter/") and path.endswith(".js"):
+        response.headers["Content-Security-Policy"] = CONVERTER_CSP
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = HSTS
     return response

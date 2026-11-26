@@ -23,7 +23,7 @@
           <label class="key" for="file">01 / 파일</label>
           <div class="val file-row">
             <!-- 기본 파일 칸의 "선택된 파일 없음" 문구를 숨기고, 선택한 파일 이름만 보여준다 -->
-            <input type="file" id="file" class="visually-hidden" accept="application/pdf,.pdf" />
+            <input type="file" id="file" class="visually-hidden" accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation" />
             <label for="file" class="pick">파일선택</label>
             <span id="file-name" class="file-name"></span>
           </div>
@@ -93,6 +93,11 @@
       </form>
 
       <output id="status" class="status" role="status"></output>
+      <!-- docx·pptx 변환 때 처음 한 번만: 내 컴퓨터 글꼴 사용 허락 (버튼 클릭으로 권한 창을 띄운다) -->
+      <div id="font-ask" class="confirm" hidden>
+        <button type="button" id="font-yes">USE MY FONTS</button>
+        <button type="button" id="font-no" class="secondary">SKIP</button>
+      </div>
 
       <section id="result" hidden>
         <p id="result-head" class="result-head">CODE</p>
@@ -102,6 +107,13 @@
       </section>
 
     </main>
+    <!-- 미리보기 크게 보기 (썸네일을 누르면 열림) -->
+    <div id="zoom" class="zoom" hidden>
+      <p id="zoom-count" class="zoom-count"></p>
+      <button type="button" id="zoom-prev" class="zoom-nav zoom-prev" aria-label="이전 장"></button>
+      <div id="zoom-page" class="zoom-page"></div>
+      <button type="button" id="zoom-next" class="zoom-nav zoom-next" aria-label="다음 장"></button>
+    </div>
     <script type="module" src="/src/upload.js"></script>
   </body>
 </html>

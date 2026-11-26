@@ -180,3 +180,34 @@ def test_secrets_never_logged(client, caplog):
     client.post("/api/fetch", json={"code": reserved["code"], "auth_token": b64u_encode(token)})
     for secret in (reserved["code"], reserved["upload_token"], b64u_encode(token)):
         assert secret not in caplog.text
+
+
+# ── 문서 변환기(M5) 관련 헤더 ──
+def test_cross_origin_isolation_and_local_fonts(client):
+    h = client.get("/api/config").headers
+    assert h["cross-origin-embedder-policy"] == "require-corp"  # SharedArrayBuffer용 격리
+    assert "local-fonts=(self)" in h["permissions-policy"]
+
+
+def test_converter_csp_relaxed_only_for_converter_scripts(tmp_path):
+    """'unsafe-eval'은 /converter/ 아래 .js(변환기 워커)에만 붙고, 페이지·API는 엄격한 CSP 그대로.
+    변환기 파일은 오래 캐시된다 (약 240MB를 매번 받지 않게)."""
+    from fastapi.staticfiles import StaticFiles
+    from starlette.routing import Mount
+
+    from app import main
+
+    (tmp_path / "w.js").write_text("//")
+    route = Mount("/converter/test", app=StaticFiles(directory=tmp_path))
+    main.app.router.routes.insert(0, route)  # dist 없이도 실제 경로처럼 요청하기 위한 테스트용 마운트
+    try:
+        with TestClient(main.app) as c:
+            r = c.get("/converter/test/w.js")
+            assert r.status_code == 200
+            assert "'unsafe-eval'" in r.headers["content-security-policy"]
+            assert r.headers["cache-control"].startswith("public, max-age=")
+            api = c.get("/api/config")
+            assert "'unsafe-eval'" not in api.headers["content-security-policy"]
+            assert api.headers["cache-control"] == "no-store"
+    finally:
+        main.app.router.routes.remove(route)
