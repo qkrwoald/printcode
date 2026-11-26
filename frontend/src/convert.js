@@ -18,8 +18,9 @@ const FALLBACK_FONTS = ['Pretendard-Regular.otf', 'Pretendard-Bold.otf'];
  * - 화면이 다 뜬 뒤 낮은 우선순위로 받는다 (화면 로딩을 늦추지 않게).
  * - 데이터 절약 모드를 켠 사용자는 받지 않는다 (docx·pptx를 고를 때 받음).
  * - 이미 캐시에 있으면 네트워크를 쓰지 않는다 (서버가 1년 캐시를 허용).
+ * extra: 함께 받을 다른 변환기 주소 (hwp 변환기 wasm, 약 28MB — 작으니 먼저 받는다)
  */
-export function prefetchConverter() {
+export function prefetchConverter(extra = []) {
   if (navigator.connection?.saveData) return;
   const start = async () => {
     // 변환기 파일을 브라우저 저장소에 보관하는 서비스 워커(public/sw.js)를 먼저 켠다.
@@ -39,6 +40,7 @@ export function prefetchConverter() {
       }
     }
     const files = [
+      ...extra,
       'wasm/soffice.wasm',
       'wasm/soffice.data',
       'wasm/soffice.js',
@@ -47,7 +49,7 @@ export function prefetchConverter() {
     ];
     for (const f of files) {
       try {
-        const res = await fetch(`${BASE}${f}`, { priority: 'low' });
+        const res = await fetch(f.startsWith('/') ? f : `${BASE}${f}`, { priority: 'low' });
         // 끝까지 읽어야 캐시에 저장된다. 내용은 메모리에 모으지 않고 흘려보낸다.
         await res.body?.pipeTo(new WritableStream());
       } catch {

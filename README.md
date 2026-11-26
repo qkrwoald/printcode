@@ -6,14 +6,14 @@
 - 공용 PC에서 코드(+확인코드)를 입력하면 브라우저 메모리에서 복호화해 인쇄 창을 엽니다.
 - 출력 PC가 파일을 받아 가는 순간 서버의 암호문은 삭제되고, 같은 코드로는 다시 출력할 수 없습니다.
 
-> 현재 단계: **M5** (docx·pptx 브라우저 변환). hwp(M6)는 아직입니다.
+> 현재 단계: **M6** (hwp·hwpx 브라우저 변환, 실험 기능).
 > 보안 설계와 한계는 [SECURITY.md](SECURITY.md)를 보세요.
 
 ## 사용 흐름
 
 메인(`/`)에서 **UPLOAD** 또는 **PRINT**를 고릅니다. 화면은 영어이고, 입력 칸 라벨(`01 / 파일` 등)만 한글입니다. 글꼴은 Pretendard(한글)와 IBM Plex Mono(영문·숫자)이고, 둘 다 OFL이며 서버에서 직접 내려줍니다.
 
-1. 노트북에서 UPLOAD(`/upload/`) → PDF·docx·pptx 선택 → (선택) 확인코드 → (필요하면) `03 / 출력 설정`을 눌러 펼치고 설정·미리보기 확인 → **UPLOAD**
+1. 노트북에서 UPLOAD(`/upload/`) → PDF·docx·pptx·hwp·hwpx 선택 → (선택) 확인코드 → (필요하면) `03 / 출력 설정`을 눌러 펼치고 설정·미리보기 확인 → **UPLOAD**
    - **쪽 범위**: 비우면 전체, `1-3, 5`, `4-`(끝까지)
    - **부수**: 1~20부, 한 부씩 묶어서
    - **모아찍기**: 1 / 2 / 4쪽 모아찍기 (A4 고정. 2쪽은 가로, 4쪽은 세로가 기본. 부마다 새 장에서 시작)
@@ -135,12 +135,21 @@ cd frontend; npm test
 - 빌드하면 `scripts/copy-converter.mjs`가 변환기 파일을 `dist/converter/<버전>-<rev>/`로 복사합니다.
   서버가 이 파일들에 주는 헤더를 바꾸면 `frontend/converter.config.json`의 `rev`를 올리세요(브라우저가 1년간 캐시).
 
+## hwp·hwpx 변환 (실험 기능, 노트북 브라우저 안에서만)
+
+- hwp(HWP 5.0·3.x)·hwpx를 고르면 **노트북 브라우저 안에서** rhwp(`@rhwp/core`, MIT, Rust+WASM)로 쪽마다 그려
+  PDF로 만든 뒤 같은 흐름으로 이어집니다. 변환 뒤에는 `Converted from HWP. Check the preview.`를 띄우고 미리보기를 펼칩니다.
+- 변환기 wasm(약 28MB)도 업로드 화면을 열면 미리 받아 서비스 워커가 보관합니다(`/converter/rhwp-<버전>-<rev>/`).
+- 글꼴: 노트북에 설치된 글꼴(한컴 글꼴 포함)을 그대로 씁니다. 없으면 비슷한 명조·고딕 계열로 그립니다.
+- 암호 걸린 문서와 300쪽을 넘는 문서는 받지 않습니다. 글자가 그림으로 들어가 PDF가 큽니다(17쪽에 약 4MB).
+- rhwp는 0.x라 버전을 고정(`0.9.1`)해 둡니다. 올릴 때는 실제 학교 문서 몇 개로 미리보기를 다시 확인하세요.
+
 ## 구조
 
 ```
 backend/app/   api.py(HTTP 엔드포인트) ws.py(WebSocket) lifecycle.py(상태 알림·정리 작업)
                db.py(SQLite) storage.py(암호문 파일) schemas.py(입력 검증) config.py
-frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) layout.js(출력 설정, pdf-lib) convert.js(docx·pptx 변환) upload.js print.js(출력 화면)
+frontend/src/  crypto.js(Argon2id·HKDF·AES-GCM) layout.js(출력 설정, pdf-lib) convert.js(docx·pptx 변환) hwp.js(hwp·hwpx 변환) upload.js print.js(출력 화면)
                printwindow.js(출력 전용 창) printjob.js(복호화·인쇄·정리) pdfview.js(pdf.js) api.js
 ```
 

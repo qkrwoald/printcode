@@ -31,10 +31,14 @@ async function fromCacheOrNetwork(request, url) {
   return response;
 }
 
-// 새 버전 파일을 저장하면, 다른 버전(/converter/<다른 버전>/…) 파일은 지운다.
+// 새 버전 파일을 저장하면, 같은 변환기의 다른 버전 파일은 지운다.
+// 폴더 이름: docx용 '<버전>-<rev>', hwp용 'rhwp-<버전>-<rev>' → 버전 부분을 뺀 앞부분('' / 'rhwp-')으로 변환기를 구분한다.
+// (구분하지 않으면 두 변환기가 서로의 파일을 지운다)
+const family = (folder) => folder.replace(/[0-9][^/]*-r[0-9]+$/, '');
 async function removeOtherVersions(cache, url) {
   const current = url.pathname.split('/')[2];
   for (const req of await cache.keys()) {
-    if (new URL(req.url).pathname.split('/')[2] !== current) await cache.delete(req);
+    const folder = new URL(req.url).pathname.split('/')[2];
+    if (folder !== current && family(folder) === family(current)) await cache.delete(req);
   }
 }

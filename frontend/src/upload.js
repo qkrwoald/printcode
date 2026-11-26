@@ -2,6 +2,7 @@
 import { getConfig, reserveCode, uploadBlob, wsUrl } from './api.js';
 import { b64uEncode, normalizePhrase, sealFile } from './crypto.js';
 import { convertToPdf, officeKind, prefetchConverter } from './convert.js';
+import { checkHwpSignature, hwpKind, hwpToPdf, HWP_WASM_URL } from './hwp.js';
 import { buildPrintPdf, isDefaultSettings, MAX_COPIES } from './layout.js';
 import { renderPdf } from './pdfview.js';
 
@@ -183,13 +184,13 @@ fileInput.addEventListener('change', async () => {
   if (!file) return;
   setReading(true);
   try {
-    const { bytes, substituted } = await readSource(file, isCurrent);
+    const { bytes, note } = await readSource(file, isCurrent);
     if (!isCurrent()) return bytes.fill(0);
     source = { bytes, name: file.name, size: file.size };
     $('settings').hidden = false;
-    if (substituted) {
-      // 문서의 글꼴 일부를 찾지 못해 대체 글꼴로 바뀌었을 수 있다 → 미리보기를 펼쳐 확인하게 한다
-      sourceNote = 'Some fonts were replaced. Check the preview.';
+    if (note) {
+      // 변환 결과가 원본과 다를 수 있다(대체 글꼴, hwp 변환) → 미리보기를 펼쳐 확인하게 한다
+      sourceNote = note;
       openSettings(true);
     }
     schedulePreview(0);
@@ -227,7 +228,8 @@ function stepCopies(delta) {
 $('copies-down').addEventListener('click', () => stepCopies(-1));
 $('copies-up').addEventListener('click', () => stepCopies(1));
 
-prefetchConverter(); // docx·pptx 변환을 빠르게: 화면을 열면 변환기를 미리 받아 둔다
+// 문서 변환을 빠르게: 화면을 열면 변환기(hwp용, docx·pptx용)를 미리 받아 둔다
+prefetchConverter([HWP_WASM_URL]);
 
 getConfig()
   .then((cfg) => {
@@ -260,7 +262,8 @@ function checkSize(size) {
   }
 }
 
-/** 고른 파일을 PDF 바이트로 만든다. docx·pptx는 브라우저 안에서 변환한다. 반환: { bytes, substituted } */
+/** 고른 파일을 PDF 바이트로 만든다. docx·pptx·hwp·hwpx는 브라우저 안에서 변환한다.
+ *  반환: { bytes, note } — note: 미리보기 확인을 안내할 문구 (없으면 '') */
 async function readSource(file, isCurrent) {
   checkSize(file.size);
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -274,14 +277,26 @@ async function readSource(file, isCurrent) {
         askFontPermission,
       });
       checkSize(pdfBytes.length);
-      return { bytes: pdfBytes, substituted };
+      return { bytes: pdfBytes, note: substituted ? 'Some fonts were replaced. Check the preview.' : '' };
+    } finally {
+      bytes.fill(0); // 원본 문서 사본은 변환 후 바로 지운다
+    }
+  }
+  const hwp = hwpKind(file.name);
+  if (hwp) {
+    try {
+      await checkHwpSignature(bytes, hwp); // 확장자만 믿지 않고 파일 앞부분으로 형식 확인
+      const pdfBytes = await hwpToPdf(bytes, { onStatus: (s) => isCurrent() && setStatus(s) });
+      checkSize(pdfBytes.length);
+      // 실험 기능: 표·글꼴이 원본과 다를 수 있어 항상 미리보기 확인을 안내한다
+      return { bytes: pdfBytes, note: 'Converted from HWP. Check the preview.' };
     } finally {
       bytes.fill(0); // 원본 문서 사본은 변환 후 바로 지운다
     }
   }
   // 확장자만 믿지 않고 PDF 시그니처를 확인한다.
   if (head !== '%PDF-') throw new Error('Not a PDF file.');
-  return { bytes, substituted: false };
+  return { bytes, note: '' };
 }
 
 form.addEventListener('submit', async (e) => {
