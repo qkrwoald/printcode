@@ -235,8 +235,23 @@ def test_proxy_hops_uses_rightmost_entry(client, clock, monkeypatch):
     assert client.post("/api/codes", headers={"X-Forwarded-For": "203.0.113.8"}).status_code == 201
 
 
+def test_proxy_hops_two_like_railway(client, clock, monkeypatch):
+    """Railway: X-Forwarded-For = [접속자가 적은 값…], 실제 접속자 IP, 중계 서버 IP(여러 대). hops=2로 실제 IP만 센다."""
+    monkeypatch.setattr(config, "PROXY_HOPS", 2)
+    limit, _ = config.RATE_UPLOAD
+    for n in range(limit):
+        # 가짜 값과 중계 서버 IP가 매번 달라도 같은 사람으로 센다
+        h = {"X-Forwarded-For": f"10.0.0.{n}, 198.51.100.5, 100.64.0.{n % 3}"}
+        assert client.post("/api/codes", headers=h).status_code == 201
+    assert client.post("/api/codes", headers={"X-Forwarded-For": "198.51.100.5, 100.64.0.9"}).status_code == 429
+    assert client.post("/api/codes", headers={"X-Forwarded-For": "198.51.100.6, 100.64.0.1"}).status_code == 201
+
+
 def test_proxy_hops_hsts_from_forwarded_proto(client, monkeypatch):
     """프록시가 HTTPS를 처리하고 http로 넘겨줘도, PROXY_HOPS가 켜져 있으면 X-Forwarded-Proto로 HSTS를 붙인다."""
     assert "strict-transport-security" not in client.get("/api/config", headers={"X-Forwarded-Proto": "https"}).headers
-    monkeypatch.setattr(config, "PROXY_HOPS", 1)
-    assert "strict-transport-security" in client.get("/api/config", headers={"X-Forwarded-Proto": "https"}).headers
+    # Railway처럼 프록시가 2단이어도 X-Forwarded-Proto는 한 값만 온다
+    for hops in (1, 2):
+        monkeypatch.setattr(config, "PROXY_HOPS", hops)
+        assert "strict-transport-security" in client.get("/api/config", headers={"X-Forwarded-Proto": "https"}).headers
+    assert "strict-transport-security" not in client.get("/api/config", headers={"X-Forwarded-Proto": "http"}).headers

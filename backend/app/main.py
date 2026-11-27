@@ -119,7 +119,13 @@ async def security_middleware(request: Request, call_next):
         response.headers["Cache-Control"] = IMMUTABLE_CACHE
     if path.startswith("/converter/") and path.endswith(".js"):
         response.headers["Content-Security-Policy"] = CONVERTER_CSP
-    if request.url.scheme == "https" or ratelimit.forwarded_entry(request, "x-forwarded-proto") == "https":
+    # 플랫폼 프록시 뒤(PROXY_HOPS>0)에서는 TLS를 프록시가 처리하므로 X-Forwarded-Proto의 마지막 값을 본다.
+    # 이 헤더는 HSTS를 붙일지만 정하므로(조작돼도 해가 없음) IP처럼 hops를 세지 않는다.
+    forwarded_https = (
+        config.PROXY_HOPS > 0
+        and request.headers.get("x-forwarded-proto", "").split(",")[-1].strip() == "https"
+    )
+    if request.url.scheme == "https" or forwarded_https:
         response.headers["Strict-Transport-Security"] = HSTS
     return response
 

@@ -110,7 +110,7 @@ HTTPS 주소(`xxx.up.railway.app`)는 Railway가 붙여 줍니다.
 
    | 이름 | 값 | 설명 |
    |---|---|---|
-   | `PRINTCODE_PROXY_HOPS` | `1` | Railway 프록시가 붙인 접속자 IP를 씀 (아래 주의) |
+   | `PRINTCODE_PROXY_HOPS` | `2` | Railway 프록시가 붙인 접속자 IP를 씀 (아래 주의) |
    | `PRINTCODE_MAX_PDF_MB` | `0` | 파일 크기 제한 없음 |
    | `PRINTCODE_MAX_TOTAL_MB` | 볼륨 크기의 80% 정도 | 예: 볼륨 500MB → `400` |
 
@@ -121,8 +121,9 @@ HTTPS 주소(`xxx.up.railway.app`)는 Railway가 붙여 줍니다.
 - 인스턴스는 반드시 **1개**로 둡니다(횟수 제한·WebSocket 알림이 메모리에 있음). `railway.json`에 빌드·상태 확인 설정이 있습니다.
 - 다시 배포하면 열려 있던 인쇄·대기 화면 연결이 끊깁니다. 올라와 있는 암호문·코드는 볼륨에 남습니다.
 - **`PRINTCODE_PROXY_HOPS` 주의:** 이 값은 "앞에 믿을 프록시가 몇 개인지"입니다. 틀리면 모든 사람이 한 IP로 묶이거나
-  (값이 너무 큼) 접속자가 IP를 속여 횟수 제한을 피할 수 있습니다(프록시 없는 서버에서 켬). Railway에서는 `1`로 시작하고,
-  배포 후 점검에서 실제 동작을 확인합니다. Oracle·VPS처럼 같은 서버의 Caddy 뒤에서는 `0`(기본)입니다.
+  (값이 너무 큼) 접속자가 IP를 속여 횟수 제한을 피할 수 있습니다(값이 너무 작음).
+  Railway는 `X-Forwarded-For` 끝에 `실제 접속자 IP, 중계 서버 IP`를 덧붙이므로 **`2`**입니다 (2026-11 실제 배포에서 확인:
+  `1`이면 중계 서버 IP로 세어져 가짜 헤더로 제한을 피할 수 있었음). Oracle·VPS처럼 같은 서버의 Caddy 뒤에서는 `0`(기본)입니다.
 - 체험(30일·5달러)이 끝나면 Hobby 요금제로 올리거나, 아래 Oracle 방법으로 옮깁니다.
 
 ## Oracle Cloud에 배포하기 (무료 서버, 대안)
@@ -208,7 +209,7 @@ cd frontend; npm test
 | `PRINTCODE_RESERVE_TTL` | `300` | 코드 예약 후 업로드까지 허용 시간(초) |
 | `PRINTCODE_MAX_PDF_MB` | `90` | PDF 최대 크기(MB). `0`이면 제한 없음. 업로드 화면도 이 값을 따름 |
 | `PRINTCODE_MAX_TOTAL_MB` | `5120` | 서버에 동시에 보관하는 암호문 전체 크기(MB). `0`이면 제한 없음 |
-| `PRINTCODE_PROXY_HOPS` | `0` | 앞단 프록시 수. Railway처럼 주소가 바뀌는 플랫폼 프록시 뒤에서만 `1`. 프록시 없이 공개된 서버에서 켜면 IP 위조 가능 |
+| `PRINTCODE_PROXY_HOPS` | `0` | 앞단 프록시 수. Railway처럼 주소가 바뀌는 플랫폼 프록시 뒤에서만 사용 (Railway는 `2`). 프록시 없이 공개된 서버에서 켜면 IP 위조 가능 |
 
 > 기본 90MB는 Cloudflare 임시 터널의 요청 크기 제한(100MB) 때문입니다.
 > 직접 운영하는 서버에서는 `0`(제한 없음)으로 둘 수 있지만, 그러면 누구나 서버 디스크를 채울 수 있으므로
